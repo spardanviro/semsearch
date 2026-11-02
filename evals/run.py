@@ -27,6 +27,9 @@ HERE = Path(__file__).resolve().parent
 CUTOFFS = (1, 5, 10)
 TOP_K = max(CUTOFFS)
 INDEX_TIMEOUT_S = 1800
+TRANSLATIONS: dict[str, str] = {
+    k: v for k, v in json.loads((HERE / "cases" / "translations_en.json").read_text(
+        encoding="utf-8")).items() if not k.startswith("_")}
 
 
 @dataclass(frozen=True)
@@ -74,10 +77,18 @@ def first_hit(results: list[SearchResult], case: Case, aliases: tuple[str, ...])
 
 
 def run_query(project: Project, query: str, mode: str) -> list[SearchResult]:
-    """`mode` is vector | keyword | hybrid, optionally `hybrid@<keyword weight>`."""
-    name, _, weight = mode.partition("@")
+    """`mode` is `<vector|keyword|hybrid>[@<keyword weight>][;pf=<per file>][;tr=1]`.
+
+    tr=1: replace the query by its English version from cases/translations_en.json, if any.
+    """
+    head, *opts = mode.split(";")
+    name, _, weight = head.partition("@")
+    options = dict(o.split("=", 1) for o in opts)
+    if options.get("tr") == "1":
+        query = TRANSLATIONS.get(query, query)
     return search(project.store, project.cache, project.embedder, project.db_lock, query, TOP_K,
-                  per_file=project.settings.per_file_results, mode=name,
+                  per_file=int(options.get("pf") or project.settings.per_file_results),
+                  mode=name,
                   keyword_weight=float(weight) if weight else project.settings.keyword_weight)
 
 
@@ -114,7 +125,8 @@ def main() -> None:
     ap.add_argument("--out", type=Path, default=HERE / "results" / "latest.json")
     args = ap.parse_args()
     modes = args.modes.split(",")
-    suites = args.suites or sorted((HERE / "cases").glob("*.json"))
+    suites = args.suites or sorted(p for p in (HERE / "cases").glob("*.json")
+                                   if not p.name.startswith("translations"))
     settings = replace(Settings(), home=args.home)
     embedder = make_embedder(settings)
 

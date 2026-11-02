@@ -12,7 +12,7 @@ from semsearch.config import EMBED_DIM, MODEL_ID, Settings
 from semsearch.embed.base import normalize
 
 log = logging.getLogger(__name__)
-QUERY_PROMPT = "SearchQuery"      # PHASE0: beats CodeRetrieval on code search
+QUERY_PROMPT = "SearchQuery"      # PHASE0 + PHASE1_5: beats CodeRetrieval / QuestionAnswering
 DOCUMENT_PROMPT = "Document"
 PROMPT_OVERHEAD_TOKENS = 12       # "title: none | text: " + special tokens
 

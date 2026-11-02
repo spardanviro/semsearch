@@ -11,7 +11,7 @@ import pytest
 from semsearch import install, mcp_server
 from semsearch.client import DaemonUnavailable
 from semsearch.config import Settings
-from semsearch.formatting import format_search, format_status
+from semsearch.formatting import ENGLISH_TIP, format_search, format_status
 from semsearch.hook import edited_paths, run
 
 SEARCH_DATA: dict[str, Any] = {
@@ -69,6 +69,15 @@ def test_format_search_lists_identical_copies() -> None:
     text = format_search("q", data)
 
     assert "(+4 identical: b/a.py, c/a.py, d/a.py, …)" in text
+
+
+def test_format_search_suggests_english_for_cjk_queries() -> None:
+    zh = format_search("存档损坏时的处理", SEARCH_DATA)
+    empty_zh = format_search("存档", {**SEARCH_DATA, "results": []})
+    en = format_search("handle a corrupt save", SEARCH_DATA)
+
+    assert zh.endswith(ENGLISH_TIP) and empty_zh.endswith(ENGLISH_TIP)
+    assert ENGLISH_TIP not in en
 
 
 def test_format_search_empty_and_stale_index_messages() -> None:

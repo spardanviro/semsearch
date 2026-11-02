@@ -19,12 +19,14 @@ requests retried", "code that loads the player save file", "something similar to
 Do NOT use it for exact identifiers, strings, regexes, or when every occurrence is needed:
 use Grep/Glob for those, and LSP (goToDefinition / findReferences / incomingCalls) for
 definitions, references and call hierarchy. Results are ranked chunks with file:line ranges;
-Read the lines you need before relying on them."""
+Read the lines you need before relying on them.
+Write the query in English even when the user asked in another language: code is English and
+translated queries find it much more reliably (benchmark: Chinese questions MRR 0.58 -> 0.70)."""
 
 SEARCH_DESCRIPTION = """Find code/docs by meaning in the current project. Returns ranked
 file:line ranges with symbol names and short previews. Best for intent-level questions where
-the identifier is unknown; for Chinese questions also try an English rewording. Not for exact
-names or exhaustive reference lists (use Grep / LSP)."""
+the identifier is unknown. Write `query` in English (translate non-English questions first):
+it ranks code far better. Not for exact names or exhaustive reference lists (use Grep / LSP)."""
 
 server = MCPServer("semsearch", instructions=INSTRUCTIONS)
 _client = DaemonClient()
@@ -38,8 +40,8 @@ def _call(fn: str, *args: object, **kwargs: object) -> dict[str, object]:
 @server.tool(description=SEARCH_DESCRIPTION)
 async def semantic_search(query: str, k: int = 8, path_glob: str | None = None,
                           modality: str | None = None) -> str:
-    """query: natural-language description; k: 1-50; path_glob: e.g. "src/**" or "*.cs";
-    modality: "code" or "text"."""
+    """query: natural-language description, in English; k: 1-50; path_glob: e.g. "src/**" or
+    "*.cs"; modality: "code" or "text"."""
     globs = [g.strip() for g in path_glob.split(",") if g.strip()] if path_glob else None
     try:
         data = await anyio.to_thread.run_sync(
