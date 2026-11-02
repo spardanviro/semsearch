@@ -15,6 +15,7 @@ import json
 import re
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -54,7 +55,40 @@ def _norm(path: str, aliases: tuple[str, ...]) -> str:
     return path
 
 
-def matches(result: SearchResult, exp: dict[str, object], aliases: tuple[str, ...]) -> bool:
+Locator = Callable[[str, str], "int | None"]
+_COMMENT_LINE = re.compile(r"^\s*(//|#|/\*|\*|--|;)")
+_DECL_WORDS = ("def|function|func|fn|class|struct|interface|enum|record|void|static|public|"
+               "private|protected|internal|override|async|export|const|let|var|bool|int|"
+               "string|float|double|Task|IEnumerable")
+
+
+def definition_locator(root: Path) -> Locator:
+    """(path, symbol) -> 1-based line of the symbol's first non-comment mention (its
+    declaration in practice), so a hit on a chunk that merely *contains* the definition (a
+    whole small file, a small class) still counts. Approximate, but only ever used as a
+    fallback after the exact symbol-name match."""
+    cache: dict[tuple[str, str], int | None] = {}
+
+    def locate(path: str, symbol: str) -> int | None:
+        key = (path, symbol)
+        if key not in cache:
+            name = rf"(?<![\w.]){re.escape(symbol)}(?![\w-])"
+            # prefer a declaration line; fall back to the first non-comment mention
+            declared = re.compile(rf"\b(?:{_DECL_WORDS})\b.*{name}")
+            mention = re.compile(name)
+            try:
+                lines = (root / path).read_text(encoding="utf-8", errors="replace").split("\n")
+            except OSError:
+                lines = []
+            code = [(i, ln) for i, ln in enumerate(lines, 1) if not _COMMENT_LINE.match(ln)]
+            cache[key] = (next((i for i, ln in code if declared.search(ln)), None)
+                          or next((i for i, ln in code if mention.search(ln)), None))
+        return cache[key]
+    return locate
+
+
+def matches(result: SearchResult, exp: dict[str, object], aliases: tuple[str, ...],
+            locate: Locator | None = None) -> bool:
     want = _norm(str(exp["path"]), aliases)
     paths = {_norm(p, aliases) for p in (result.path, *result.duplicates)}
     if want not in paths:
@@ -64,14 +98,20 @@ def matches(result: SearchResult, exp: dict[str, object], aliases: tuple[str, ..
         return True
     if symbol is not None and str(symbol) in re.split(r"[.,\s]+", result.symbol):
         return True
-    if isinstance(lines, list) and result.start_line is not None and result.end_line is not None:
+    if result.start_line is None or result.end_line is None:
+        return False
+    if isinstance(lines, list):
         return result.start_line <= int(lines[1]) and int(lines[0]) <= result.end_line
+    if symbol is not None and locate is not None:
+        line = locate(str(exp["path"]), str(symbol))
+        return line is not None and result.start_line <= line <= result.end_line
     return False
 
 
-def first_hit(results: list[SearchResult], case: Case, aliases: tuple[str, ...]) -> int | None:
+def first_hit(results: list[SearchResult], case: Case, aliases: tuple[str, ...],
+              locate: Locator | None = None) -> int | None:
     for rank, r in enumerate(results, 1):
-        if any(matches(r, e, aliases) for e in case.expect):
+        if any(matches(r, e, aliases, locate) for e in case.expect):
             return rank
     return None
 
@@ -90,6 +130,15 @@ def run_query(project: Project, query: str, mode: str) -> list[SearchResult]:
                   per_file=int(options.get("pf") or project.settings.per_file_results),
                   mode=name,
                   keyword_weight=float(weight) if weight else project.settings.keyword_weight)
+
+
+def unindexed_targets(project: Project, cases: list[Case]) -> list[tuple[str, str]]:
+    """Expectations naming a file the index does not hold (typo, ignored or too large):
+    such a case can never be hit, so it would silently count as a search failure."""
+    with project.db_lock:
+        indexed = set(project.store.files())
+    return [(c.query, str(e["path"])) for c in cases for e in c.expect
+            if str(e["path"]) not in indexed]
 
 
 def summarize(ranks: list[int | None]) -> dict[str, float]:
@@ -122,6 +171,8 @@ def main() -> None:
     ap.add_argument("--modes", default="vector")
     ap.add_argument("--home", type=Path, default=HERE / ".home")
     ap.add_argument("--show-misses", action="store_true")
+    ap.add_argument("--strict", action="store_true",
+                    help="fail when an expected path is not in the index")
     ap.add_argument("--out", type=Path, default=HERE / "results" / "latest.json")
     args = ap.parse_args()
     modes = args.modes.split(",")
@@ -139,10 +190,17 @@ def main() -> None:
             raise SystemExit(f"indexing {root} did not finish")
         print(f"[{suite_path.stem}] indexed in {time.perf_counter() - t0:.1f}s "
               f"{project.status()['chunks']} chunks", file=sys.stderr)
+        unknown = unindexed_targets(project, cases)
+        for query, path in unknown:
+            print(f"  ! expected path not in index: {path}  ({query})", file=sys.stderr)
+        if unknown and args.strict:
+            raise SystemExit(f"{suite_path.name}: {len(unknown)} expected paths are not indexed")
+        locate = definition_locator(root)
         for case in cases:
             ranks: dict[str, int | None] = {}
             for mode in modes:
-                ranks[mode] = first_hit(run_query(project, case.query, mode), case, aliases)
+                ranks[mode] = first_hit(run_query(project, case.query, mode), case, aliases,
+                                        locate)
             rows.append({"suite": case.suite, "query": case.query, "tags": list(case.tags),
                          "ranks": ranks})
         project.close()

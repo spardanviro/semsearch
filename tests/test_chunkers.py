@@ -136,7 +136,8 @@ def test_chunk_text_import_only_gap_is_dropped(small: Settings) -> None:
 
 def test_chunk_text_gap_starts_after_leading_imports(small: Settings) -> None:
     imports = "\n".join(f"using Namespace{i};" for i in range(6))
-    fields = "\n".join(f"        // explains the field number {i} of the menu" for i in range(6))
+    fields = "\n".join(f"        int field{i} = {i}; // explains the field number {i} of the menu"
+                       for i in range(6))
     methods = "\n".join(
         f"        void M{i}()\n        {{\n"
         + "\n".join(f"            Step({j}); // step {j} of method {i}" for j in range(8))
@@ -181,6 +182,80 @@ def test_chunk_text_tiny_adjacent_methods_are_merged(small: Settings) -> None:
 
     assert any(c.kind == "members" and "," in c.symbol for c in chunks)
     assert len(chunks) < 12
+
+
+def test_chunk_text_doc_comment_joins_following_definition(small: Settings) -> None:
+    # Regression: the comment describing a method became its own gap chunk and outranked it.
+    filler = "\n".join(f"        Step({j}); // step {j} of the work" for j in range(8))
+    src = ("public class Store\n{\n"
+           "    // stray note separated by a blank line\n\n"
+           "    /// <summary>Punish a player who left the match early.</summary>\n"
+           "    // escalates on repeat offences\n"
+           f"    public void Punish(int id)\n    {{\n{filler}\n    }}\n\n"
+           f"    public void Other()\n    {{\n{filler}\n    }}\n}}\n")
+    lines = src.split("\n")
+
+    chunks = chunk_text("Store.cs", src, "code", "csharp", words, small)
+    punish = next(c for c in chunks if c.symbol == "Store.Punish")
+
+    assert lines[punish.start_line - 1].strip().startswith("/// <summary>")
+    assert "stray note" not in punish.text
+    assert not any(c.kind == "declarations" and "Punish a player" in c.text for c in chunks)
+
+
+def test_chunk_text_js_comment_attaches_through_export(small: Settings) -> None:
+    body_lines = "\n".join(f"  total += step{i}(items); // part {i} of planning" for i in range(8))
+    src = (f"/** Split tasks into waves; throws on cycles. */\nexport function planWaves(items) {{\n"
+           f"{body_lines}\n  return total;\n}}\n\nexport function other(x) {{\n{body_lines}\n}}\n")
+
+    chunks = chunk_text("m.mjs", src, "code", "javascript", words, small)
+    plan = next(c for c in chunks if c.symbol == "planWaves")
+
+    assert plan.start_line == 1
+
+
+def test_chunk_text_trailing_comment_on_code_line_is_not_moved(small: Settings) -> None:
+    filler = "\n".join(f"    x{i} = {i}  # step {i} of the computation here" for i in range(8))
+    src = f"def a():\n{filler}\n    return 1  # end of a\ndef b():\n{filler}\n    return 2\n"
+
+    chunks = chunk_text("t.py", src, "code", "python", words, small)
+    b = next(c for c in chunks if c.symbol == "b")
+
+    assert src.split("\n")[b.start_line - 1].startswith("def b")
+
+
+def test_chunk_text_rust_doc_comments_attach(small: Settings) -> None:
+    # Regression: Rust line comments end at column 0 of the next row, so `///` never attached.
+    body_rs = "\n".join(f"    let v{i} = step{i}(x); // part {i} of the work" for i in range(8))
+    src = f"/// Parse the config.\n/// Second doc line.\nfn parse(x: i32) {{\n{body_rs}\n}}\n\n" \
+          f"fn other(x: i32) {{\n{body_rs}\n}}\n"
+
+    chunks = chunk_text("lib.rs", src, "code", "rust", words, small)
+
+    assert next(c for c in chunks if c.symbol == "parse").start_line == 1
+
+
+def test_chunk_text_comment_after_open_brace_keeps_class_header_out(small: Settings) -> None:
+    # Regression: `{ // note` above the first method pulled the class header into it.
+    filler = "\n".join(f"        Step({j}); // step {j} of the work" for j in range(8))
+    src = f"public class A\n{{ // note about the class\n    public void M()\n    {{\n{filler}\n    }}\n}}\n"
+
+    chunks = chunk_text("A.cs", src, "code", "csharp", words, small)
+
+    assert next(c for c in chunks if c.symbol == "A.M").start_line == 3
+
+
+def test_chunk_text_powershell_functions_are_named_chunks(small: Settings) -> None:
+    body_ps = "\n".join(f"    $value{i} = Get-Item $path{i}  # read part {i}" for i in range(8))
+    src = (f"# Ask the user for a host address and add the default port\n"
+           f"function Read-HostAddress {{\n{body_ps}\n}}\n\n"
+           f"function Write-Config {{\n{body_ps}\n}}\n")
+
+    chunks = chunk_text("Start-Coop.ps1", src, "code", "powershell", words, small)
+    symbols = {c.symbol for c in chunks}
+
+    assert {"Read-HostAddress", "Write-Config"} <= symbols
+    assert next(c for c in chunks if c.symbol == "Read-HostAddress").start_line == 1
 
 
 def test_chunk_text_small_file_becomes_single_chunk(small: Settings) -> None:

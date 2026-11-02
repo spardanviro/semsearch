@@ -1,0 +1,873 @@
+{
+ "modes": [
+  "vector",
+  "hybrid",
+  "hybrid;tr=1"
+ ],
+ "summary": {
+  "all": {
+   "vector": {
+    "R@1": 0.6481481481481481,
+    "R@5": 0.8333333333333334,
+    "R@10": 0.8888888888888888,
+    "MRR": 0.7314006466784244
+   },
+   "hybrid": {
+    "R@1": 0.6481481481481481,
+    "R@5": 0.8333333333333334,
+    "R@10": 0.9074074074074074,
+    "MRR": 0.7338697824808936
+   },
+   "hybrid;tr=1": {
+    "R@1": 0.6666666666666666,
+    "R@5": 0.8703703703703703,
+    "R@10": 0.9259259259259259,
+    "MRR": 0.7552469135802469
+   }
+  },
+  "suite:raftmod": {
+   "vector": {
+    "R@1": 0.7058823529411765,
+    "R@5": 0.8823529411764706,
+    "R@10": 0.9411764705882353,
+    "MRR": 0.7829598506069094
+   },
+   "hybrid": {
+    "R@1": 0.6764705882352942,
+    "R@5": 0.8529411764705882,
+    "R@10": 0.9411764705882353,
+    "MRR": 0.7672735760971056
+   },
+   "hybrid;tr=1": {
+    "R@1": 0.6764705882352942,
+    "R@5": 0.8823529411764706,
+    "R@10": 0.9411764705882353,
+    "MRR": 0.7693627450980393
+   }
+  },
+  "tag:zh": {
+   "vector": {
+    "R@1": 0.5714285714285714,
+    "R@5": 0.7857142857142857,
+    "R@10": 0.8571428571428571,
+    "MRR": 0.6727607709750567
+   },
+   "hybrid": {
+    "R@1": 0.6071428571428571,
+    "R@5": 0.7857142857142857,
+    "R@10": 0.8571428571428571,
+    "MRR": 0.6906179138321996
+   },
+   "hybrid;tr=1": {
+    "R@1": 0.6428571428571429,
+    "R@5": 0.8571428571428571,
+    "R@10": 0.8928571428571429,
+    "MRR": 0.7318452380952382
+   }
+  },
+  "tag:concept": {
+   "vector": {
+    "R@1": 0.5882352941176471,
+    "R@5": 0.7941176470588235,
+    "R@10": 0.8823529411764706,
+    "MRR": 0.6851657329598506
+   },
+   "hybrid": {
+    "R@1": 0.5882352941176471,
+    "R@5": 0.7941176470588235,
+    "R@10": 0.8823529411764706,
+    "MRR": 0.6851657329598506
+   },
+   "hybrid;tr=1": {
+    "R@1": 0.6176470588235294,
+    "R@5": 0.8529411764705882,
+    "R@10": 0.9117647058823529,
+    "MRR": 0.7191176470588235
+   }
+  },
+  "tag:en": {
+   "vector": {
+    "R@1": 0.7307692307692307,
+    "R@5": 0.8846153846153846,
+    "R@10": 0.9230769230769231,
+    "MRR": 0.7945512820512821
+   },
+   "hybrid": {
+    "R@1": 0.6923076923076923,
+    "R@5": 0.8846153846153846,
+    "R@10": 0.9615384615384616,
+    "MRR": 0.780448717948718
+   },
+   "hybrid;tr=1": {
+    "R@1": 0.6923076923076923,
+    "R@5": 0.8846153846153846,
+    "R@10": 0.9615384615384616,
+    "MRR": 0.780448717948718
+   }
+  },
+  "tag:keyword": {
+   "vector": {
+    "R@1": 0.7777777777777778,
+    "R@5": 0.8888888888888888,
+    "R@10": 0.8888888888888888,
+    "MRR": 0.8
+   },
+   "hybrid": {
+    "R@1": 0.7777777777777778,
+    "R@5": 0.8888888888888888,
+    "R@10": 1.0,
+    "MRR": 0.8333333333333334
+   },
+   "hybrid;tr=1": {
+    "R@1": 0.7777777777777778,
+    "R@5": 0.8888888888888888,
+    "R@10": 1.0,
+    "MRR": 0.8333333333333334
+   }
+  },
+  "tag:mixed": {
+   "vector": {
+    "R@1": 0.7272727272727273,
+    "R@5": 0.9090909090909091,
+    "R@10": 0.9090909090909091,
+    "MRR": 0.8181818181818182
+   },
+   "hybrid": {
+    "R@1": 0.7272727272727273,
+    "R@5": 0.9090909090909091,
+    "R@10": 0.9090909090909091,
+    "MRR": 0.8030303030303031
+   },
+   "hybrid;tr=1": {
+    "R@1": 0.7272727272727273,
+    "R@5": 0.9090909090909091,
+    "R@10": 0.9090909090909091,
+    "MRR": 0.8030303030303031
+   }
+  },
+  "suite:semsearch": {
+   "vector": {
+    "R@1": 0.55,
+    "R@5": 0.75,
+    "R@10": 0.8,
+    "MRR": 0.64375
+   },
+   "hybrid": {
+    "R@1": 0.6,
+    "R@5": 0.8,
+    "R@10": 0.85,
+    "MRR": 0.6770833333333333
+   },
+   "hybrid;tr=1": {
+    "R@1": 0.65,
+    "R@5": 0.85,
+    "R@10": 0.9,
+    "MRR": 0.73125
+   }
+  }
+ },
+ "cases": [
+  {
+   "suite": "raftmod",
+   "query": "P2 存档先写临时文件再替换，防止断电损坏",
+   "tags": [
+    "zh",
+    "concept"
+   ],
+   "ranks": {
+    "vector": 2,
+    "hybrid": 2,
+    "hybrid;tr=1": 1
+   }
+  },
+  {
+   "suite": "raftmod",
+   "query": "存档文件损坏时另存一份原件",
+   "tags": [
+    "zh",
+    "concept"
+   ],
+   "ranks": {
+    "vector": 1,
+    "hybrid": 1,
+    "hybrid;tr=1": 1
+   }
+  },
+  {
+   "suite": "raftmod",
+   "query": "主存档读不出来时改用备份文件",
+   "tags": [
+    "zh",
+    "concept"
+   ],
+   "ranks": {
+    "vector": 1,
+    "hybrid": 1,
+    "hybrid;tr=1": 1
+   }
+  },
+  {
+   "suite": "raftmod",
+   "query": "关闭背包时光标上还拿着物品，放回原格或背包，放不下就掉在脚下",
+   "tags": [
+    "zh",
+    "concept"
+   ],
+   "ranks": {
+    "vector": 1,
+    "hybrid": 1,
+    "hybrid;tr=1": 1
+   }
+  },
+  {
+   "suite": "raftmod",
+   "query": "每帧开头检查 P2 临时上下文是否残留并自动复位",
+   "tags": [
+    "zh",
+    "concept"
+   ],
+   "ranks": {
+    "vector": 7,
+    "hybrid": 7,
+    "hybrid;tr=1": null
+   }
+  },
+  {
+   "suite": "raftmod",
+   "query": "某个补丁在游戏更新后失效时只跳过它，不让整个 mod 加载失败",
+   "tags": [
+    "zh",
+    "concept"
+   ],
+   "ranks": {
+    "vector": 2,
+    "hybrid": 2,
+    "hybrid;tr=1": 3
+   }
+  },
+  {
+   "suite": "raftmod",
+   "query": "输入重定向补丁加载时自检，完全没生效就记日志",
+   "tags": [
+    "zh",
+    "concept"
+   ],
+   "ranks": {
+    "vector": null,
+    "hybrid": null,
+    "hybrid;tr=1": null
+   }
+  },
+  {
+   "suite": "raftmod",
+   "query": "分屏期间关掉的垂直同步不要写进游戏设置，退出后恢复",
+   "tags": [
+    "zh",
+    "concept"
+   ],
+   "ranks": {
+    "vector": 1,
+    "hybrid": 1,
+    "hybrid;tr=1": 1
+   }
+  },
+  {
+   "suite": "raftmod",
+   "query": "联机或有其他真实玩家时不生成第二个玩家",
+   "tags": [
+    "zh",
+    "concept"
+   ],
+   "ranks": {
+    "vector": null,
+    "hybrid": null,
+    "hybrid;tr=1": 2
+   }
+  },
+  {
+   "suite": "raftmod",
+   "query": "P2 打开研究台时占用它，P1 不能同时打开",
+   "tags": [
+    "zh",
+    "concept"
+   ],
+   "ranks": {
+    "vector": 1,
+    "hybrid": 1,
+    "hybrid;tr=1": 5
+   }
+  },
+  {
+   "suite": "raftmod",
+   "query": "进入新世界时清空 P2 的装备，避免带进别的存档被复制",
+   "tags": [
+    "zh",
+    "concept"
+   ],
+   "ranks": {
+    "vector": 9,
+    "hybrid": 9,
+    "hybrid;tr=1": 2
+   }
+  },
+  {
+   "suite": "raftmod",
+   "query": "P1 倒在木筏外面时尸体和镜头乱飞的稳定处理",
+   "tags": [
+    "zh",
+    "concept"
+   ],
+   "ranks": {
+    "vector": 1,
+    "hybrid": 1,
+    "hybrid;tr=1": 1
+   }
+  },
+  {
+   "suite": "raftmod",
+   "query": "背包能扩展多少格取决于装备的背包",
+   "tags": [
+    "zh",
+    "concept"
+   ],
+   "ranks": {
+    "vector": 1,
+    "hybrid": 1,
+    "hybrid;tr=1": 1
+   }
+  },
+  {
+   "suite": "raftmod",
+   "query": "按 B 关闭菜单的同一帧被误读成蹲下",
+   "tags": [
+    "zh",
+    "concept"
+   ],
+   "ranks": {
+    "vector": 3,
+    "hybrid": 3,
+    "hybrid;tr=1": 8
+   }
+  },
+  {
+   "suite": "raftmod",
+   "query": "灯光图层遮罩不要每帧扫描全场景，做节流",
+   "tags": [
+    "zh",
+    "concept"
+   ],
+   "ranks": {
+    "vector": 1,
+    "hybrid": 1,
+    "hybrid;tr=1": 1
+   }
+  },
+  {
+   "suite": "raftmod",
+   "query": "write the save file atomically through a temp file and keep a backup",
+   "tags": [
+    "en",
+    "concept"
+   ],
+   "ranks": {
+    "vector": 1,
+    "hybrid": 1,
+    "hybrid;tr=1": 1
+   }
+  },
+  {
+   "suite": "raftmod",
+   "query": "apply each Harmony patch in isolation so one broken patch does not stop the mod loading",
+   "tags": [
+    "en",
+    "concept"
+   ],
+   "ranks": {
+    "vector": 1,
+    "hybrid": 1,
+    "hybrid;tr=1": 1
+   }
+  },
+  {
+   "suite": "raftmod",
+   "query": "restore the user's vsync setting when split screen ends",
+   "tags": [
+    "en",
+    "concept"
+   ],
+   "ranks": {
+    "vector": 1,
+    "hybrid": 1,
+    "hybrid;tr=1": 1
+   }
+  },
+  {
+   "suite": "raftmod",
+   "query": "why is the second player not spawned in a multiplayer session",
+   "tags": [
+    "en",
+    "concept"
+   ],
+   "ranks": {
+    "vector": 2,
+    "hybrid": 2,
+    "hybrid;tr=1": 2
+   }
+  },
+  {
+   "suite": "raftmod",
+   "query": "put the item held on the cursor back when the inventory closes",
+   "tags": [
+    "en",
+    "concept"
+   ],
+   "ranks": {
+    "vector": 1,
+    "hybrid": 1,
+    "hybrid;tr=1": 1
+   }
+  },
+  {
+   "suite": "raftmod",
+   "query": "detect a leaked player context at the start of the frame and reset it",
+   "tags": [
+    "en",
+    "concept"
+   ],
+   "ranks": {
+    "vector": 3,
+    "hybrid": 3,
+    "hybrid;tr=1": 3
+   }
+  },
+  {
+   "suite": "raftmod",
+   "query": "mark the research table as occupied by player two",
+   "tags": [
+    "en",
+    "concept"
+   ],
+   "ranks": {
+    "vector": 1,
+    "hybrid": 1,
+    "hybrid;tr=1": 1
+   }
+  },
+  {
+   "suite": "raftmod",
+   "query": "TranspilerGuard Verify",
+   "tags": [
+    "en",
+    "keyword"
+   ],
+   "ranks": {
+    "vector": 5,
+    "hybrid": 6,
+    "hybrid;tr=1": 6
+   }
+  },
+  {
+   "suite": "raftmod",
+   "query": "ReflectionProbe culling mask layers",
+   "tags": [
+    "en",
+    "keyword"
+   ],
+   "ranks": {
+    "vector": 1,
+    "hybrid": 1,
+    "hybrid;tr=1": 1
+   }
+  },
+  {
+   "suite": "raftmod",
+   "query": "occupyingPlayerID",
+   "tags": [
+    "en",
+    "keyword"
+   ],
+   "ranks": {
+    "vector": 1,
+    "hybrid": 1,
+    "hybrid;tr=1": 1
+   }
+  },
+  {
+   "suite": "raftmod",
+   "query": "GraphicsSettingsBox Save vsync patch",
+   "tags": [
+    "en",
+    "keyword"
+   ],
+   "ranks": {
+    "vector": 1,
+    "hybrid": 1,
+    "hybrid;tr=1": 1
+   }
+  },
+  {
+   "suite": "raftmod",
+   "query": "LoadAndRestoreP2 跳过损坏的行",
+   "tags": [
+    "zh",
+    "keyword"
+   ],
+   "ranks": {
+    "vector": 1,
+    "hybrid": 1,
+    "hybrid;tr=1": 1
+   }
+  },
+  {
+   "suite": "raftmod",
+   "query": "SuppressP2CrouchOnExit",
+   "tags": [
+    "en",
+    "keyword"
+   ],
+   "ranks": {
+    "vector": 1,
+    "hybrid": 1,
+    "hybrid;tr=1": 1
+   }
+  },
+  {
+   "suite": "raftmod",
+   "query": "ResetForFreshWorld clears the equipment of player two",
+   "tags": [
+    "en",
+    "mixed"
+   ],
+   "ranks": {
+    "vector": 1,
+    "hybrid": 1,
+    "hybrid;tr=1": 1
+   }
+  },
+  {
+   "suite": "raftmod",
+   "query": "how does EnsureSplitLightingMasks build the layer mask",
+   "tags": [
+    "en",
+    "mixed"
+   ],
+   "ranks": {
+    "vector": 1,
+    "hybrid": 1,
+    "hybrid;tr=1": 1
+   }
+  },
+  {
+   "suite": "raftmod",
+   "query": "P2SaveStore 按世界区分存档文件名",
+   "tags": [
+    "zh",
+    "mixed"
+   ],
+   "ranks": {
+    "vector": 1,
+    "hybrid": 1,
+    "hybrid;tr=1": 1
+   }
+  },
+  {
+   "suite": "raftmod",
+   "query": "RecoverLeakedP2ScopeIfAny 看门狗复位",
+   "tags": [
+    "zh",
+    "mixed"
+   ],
+   "ranks": {
+    "vector": 1,
+    "hybrid": 1,
+    "hybrid;tr=1": 1
+   }
+  },
+  {
+   "suite": "raftmod",
+   "query": "keep SaveAndLoad localPlayer pointing at P1",
+   "tags": [
+    "en",
+    "mixed"
+   ],
+   "ranks": {
+    "vector": 1,
+    "hybrid": 2,
+    "hybrid;tr=1": 2
+   }
+  },
+  {
+   "suite": "raftmod",
+   "query": "TickP2HeldOutsideDrop 提示丢弃光标上的物品",
+   "tags": [
+    "zh",
+    "mixed"
+   ],
+   "ranks": {
+    "vector": 1,
+    "hybrid": 1,
+    "hybrid;tr=1": 1
+   }
+  },
+  {
+   "suite": "semsearch",
+   "query": "跳过符号链接和目录联接，防止读到仓库外面的文件",
+   "tags": [
+    "zh",
+    "concept"
+   ],
+   "ranks": {
+    "vector": null,
+    "hybrid": null,
+    "hybrid;tr=1": null
+   }
+  },
+  {
+   "suite": "semsearch",
+   "query": "文件在外部被删除后不要再出现在搜索结果里",
+   "tags": [
+    "zh",
+    "concept"
+   ],
+   "ranks": {
+    "vector": 1,
+    "hybrid": 1,
+    "hybrid;tr=1": 1
+   }
+  },
+  {
+   "suite": "semsearch",
+   "query": "显存不够时把批次拆小重试",
+   "tags": [
+    "zh",
+    "concept"
+   ],
+   "ranks": {
+    "vector": null,
+    "hybrid": null,
+    "hybrid;tr=1": 2
+   }
+  },
+  {
+   "suite": "semsearch",
+   "query": "防止同时启动多个后台服务进程",
+   "tags": [
+    "zh",
+    "concept"
+   ],
+   "ranks": {
+    "vector": 4,
+    "hybrid": 4,
+    "hybrid;tr=1": 3
+   }
+  },
+  {
+   "suite": "semsearch",
+   "query": "把相邻的很小的方法合并成一个块",
+   "tags": [
+    "zh",
+    "concept"
+   ],
+   "ranks": {
+    "vector": 1,
+    "hybrid": 1,
+    "hybrid;tr=1": 1
+   }
+  },
+  {
+   "suite": "semsearch",
+   "query": "只有 import 语句的空隙不要单独成块",
+   "tags": [
+    "zh",
+    "concept"
+   ],
+   "ranks": {
+    "vector": 2,
+    "hybrid": 2,
+    "hybrid;tr=1": 1
+   }
+  },
+  {
+   "suite": "semsearch",
+   "query": "修改配置文件前先备份",
+   "tags": [
+    "zh",
+    "concept"
+   ],
+   "ranks": {
+    "vector": 1,
+    "hybrid": 1,
+    "hybrid;tr=1": 1
+   }
+  },
+  {
+   "suite": "semsearch",
+   "query": "the token file must only be readable by the owner",
+   "tags": [
+    "en",
+    "concept"
+   ],
+   "ranks": {
+    "vector": 1,
+    "hybrid": 1,
+    "hybrid;tr=1": 1
+   }
+  },
+  {
+   "suite": "semsearch",
+   "query": "detect binary files and decode text with fallback encodings",
+   "tags": [
+    "en",
+    "concept"
+   ],
+   "ranks": {
+    "vector": 1,
+    "hybrid": 1,
+    "hybrid;tr=1": 1
+   }
+  },
+  {
+   "suite": "semsearch",
+   "query": "the edit hook must never fail even when the daemon is down",
+   "tags": [
+    "en",
+    "concept"
+   ],
+   "ranks": {
+    "vector": 8,
+    "hybrid": 8,
+    "hybrid;tr=1": 8
+   }
+  },
+  {
+   "suite": "semsearch",
+   "query": "compact the vector matrix after many rows were deleted",
+   "tags": [
+    "en",
+    "concept"
+   ],
+   "ranks": {
+    "vector": 1,
+    "hybrid": 1,
+    "hybrid;tr=1": 1
+   }
+  },
+  {
+   "suite": "semsearch",
+   "query": "start the daemon detached so it survives the parent process",
+   "tags": [
+    "en",
+    "concept"
+   ],
+   "ranks": {
+    "vector": 1,
+    "hybrid": 1,
+    "hybrid;tr=1": 1
+   }
+  },
+  {
+   "suite": "semsearch",
+   "query": "BEGIN IMMEDIATE rollback when commit fails",
+   "tags": [
+    "en",
+    "keyword"
+   ],
+   "ranks": {
+    "vector": 1,
+    "hybrid": 1,
+    "hybrid;tr=1": 1
+   }
+  },
+  {
+   "suite": "semsearch",
+   "query": "CREATE_BREAKAWAY_FROM_JOB",
+   "tags": [
+    "en",
+    "keyword"
+   ],
+   "ranks": {
+    "vector": null,
+    "hybrid": 3,
+    "hybrid;tr=1": 3
+   }
+  },
+  {
+   "suite": "semsearch",
+   "query": "argpartition top k",
+   "tags": [
+    "en",
+    "keyword"
+   ],
+   "ranks": {
+    "vector": 1,
+    "hybrid": 1,
+    "hybrid;tr=1": 1
+   }
+  },
+  {
+   "suite": "semsearch",
+   "query": "write_daemon_file 设置文件权限",
+   "tags": [
+    "zh",
+    "mixed"
+   ],
+   "ranks": {
+    "vector": 1,
+    "hybrid": 1,
+    "hybrid;tr=1": 1
+   }
+  },
+  {
+   "suite": "semsearch",
+   "query": "DaemonClient ensure stale lock file",
+   "tags": [
+    "en",
+    "mixed"
+   ],
+   "ranks": {
+    "vector": null,
+    "hybrid": null,
+    "hybrid;tr=1": null
+   }
+  },
+  {
+   "suite": "semsearch",
+   "query": "when does _merge_small refuse to merge chunks",
+   "tags": [
+    "en",
+    "mixed"
+   ],
+   "ranks": {
+    "vector": 1,
+    "hybrid": 1,
+    "hybrid;tr=1": 1
+   }
+  },
+  {
+   "suite": "semsearch",
+   "query": "TrustedHostMiddleware bearer token check",
+   "tags": [
+    "en",
+    "mixed"
+   ],
+   "ranks": {
+    "vector": 2,
+    "hybrid": 3,
+    "hybrid;tr=1": 3
+   }
+  },
+  {
+   "suite": "semsearch",
+   "query": "embeddings_by_hash 复用已有向量",
+   "tags": [
+    "zh",
+    "mixed"
+   ],
+   "ranks": {
+    "vector": 2,
+    "hybrid": 1,
+    "hybrid;tr=1": 1
+   }
+  }
+ ]
+}

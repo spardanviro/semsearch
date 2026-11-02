@@ -29,6 +29,7 @@ LEAF_TYPES = frozenset({
     "destructor_declaration", "operator_declaration", "conversion_operator_declaration",
     "function_item", "method", "singleton_method", "constructor_definition",
     "type_declaration", "struct_item", "enum_item", "enum_declaration",
+    "function_statement",   # PowerShell
 })
 CONTAINER_TYPES = frozenset({
     "class_definition", "class_declaration", "abstract_class_declaration",
@@ -37,7 +38,7 @@ CONTAINER_TYPES = frozenset({
     "struct_specifier", "object_declaration", "protocol_declaration", "class", "module",
 })
 NAME_TYPES = ("identifier", "type_identifier", "property_identifier", "field_identifier",
-              "name", "constant", "simple_identifier")
+              "name", "constant", "simple_identifier", "function_name")
 MIN_GAP_NON_BLANK = 3
 GAP_KIND = "declarations"
 SMALL_CHUNK_TOKENS = 100
@@ -86,6 +87,33 @@ def _kind(node: Node) -> str:
     return (inner or node).type
 
 
+def _last_row(node: Node) -> int:
+    """Row of a node's last character: some grammars (Rust `///`) end a line comment at
+    column 0 of the next row."""
+    row, col = node.end_point
+    return row - 1 if col == 0 and row > node.start_point[0] else row
+
+
+def _leading_comment_row(node: Node, lines: list[str]) -> int:
+    """0-based first row of the comment block directly above `node` (its doc comment), or
+    the node's own start row. The block must touch the definition (no blank line between)
+    and each comment must start its line: `} // end` or `class A { // note` stay put."""
+    start = node.start_point[0]
+    # `export function f` / `public` wrappers: the comment is a sibling of the wrapper
+    anchor = node
+    while (anchor.parent is not None and anchor.prev_named_sibling is None
+           and anchor.parent.start_point[0] == start and anchor.parent.parent is not None):
+        anchor = anchor.parent
+    sibling = anchor.prev_named_sibling
+    while sibling is not None and "comment" in sibling.type and _last_row(sibling) == start - 1:
+        row, col = sibling.start_point          # col is a byte offset
+        if row >= len(lines) or lines[row].encode("utf-8")[:col].strip():
+            break
+        start = row
+        sibling = sibling.prev_named_sibling
+    return start
+
+
 @dataclass
 class _Walk:
     ctx: ChunkContext
@@ -94,7 +122,8 @@ class _Walk:
     containers: list[tuple[int, int, str]] = field(default_factory=list)
 
     def emit_def(self, node: Node, parent: str, stack: list[tuple[Node, str]]) -> None:
-        start = node.start_point[0] + 1
+        # the doc comment above a definition describes it best: keep them in one chunk
+        start = _leading_comment_row(node, self.lines) + 1
         # a node ending at column 0 of the next row does not really occupy that row
         end = node.end_point[0] + (0 if node.end_point[1] == 0 and node.end_point[0] > 0 else 1)
         end = min(max(end, start), len(self.lines))

@@ -8,7 +8,8 @@ from pathlib import Path
 
 MODEL_ID = "google/embeddinggemma-2"
 EMBED_DIM = 768
-CHUNKER_VERSION = "3"   # 2: "\n"-only line split, boilerplate-only gaps dropped; 3: lead trim
+CHUNKER_VERSION = "4"   # 2: "\n"-only lines, no boilerplate gaps; 3: lead trim;
+                        # 4: doc comments join their definition, PowerShell functions
 SCHEMA_VERSION = "3"    # 2: AUTOINCREMENT chunk ids; 3: chunks_fts keyword index
 KEYWORDS_VERSION = "1"  # bump when keywords.terms() changes: the FTS index is rebuilt
 SEARCH_MODES = ("hybrid", "vector", "keyword")
