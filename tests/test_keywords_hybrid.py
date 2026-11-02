@@ -210,6 +210,13 @@ def test_search_rejects_unknown_mode(indexed: tuple[Store, VectorCache, dict[str
         run(indexed, "x", "fuzzy")
 
 
+def test_settings_default_search_mode_is_vector(monkeypatch: pytest.MonkeyPatch) -> None:
+    # hybrid showed no gain over the 126-case benchmark (docs/EVAL_REAL_PROJECTS.md)
+    monkeypatch.delenv("SEMSEARCH_SEARCH_MODE", raising=False)
+
+    assert Settings().search_mode == "vector"
+
+
 def test_settings_reject_unknown_search_mode(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SEMSEARCH_SEARCH_MODE", "fuzzy")
 

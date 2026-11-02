@@ -1,15 +1,16 @@
 """Query -> ranked, de-duplicated chunk hits.
 
 Modes
-- vector:  cosine similarity of EmbeddingGemma vectors (meaning, cross-language)
+- vector:  the default. Cosine similarity of EmbeddingGemma vectors (meaning, cross-language)
 - keyword: FTS5 BM25 over identifier-split terms (exact names, rare words)
-- hybrid:  the default. Questions with an identifier-shaped word get cosine + a small BM25
-           bonus (`boost`); plain-language questions are pure vector.
+- hybrid:  questions with an identifier-shaped word get cosine + a small BM25 bonus
+           (`boost`); plain-language questions are pure vector.
 Displayed scores are always cosine similarity, so they mean the same thing in every mode.
 
-Why this shape (evals/, docs/PHASE1_5.md): EmbeddingGemma already sees symbol names through
-the chunk header, so keywords help only where an exact name sits in a body. Rank fusion (RRF)
-and keyword hits on plain-language questions both made results worse.
+Why (evals/, docs/PHASE1_5.md, docs/EVAL_REAL_PROJECTS.md): EmbeddingGemma already sees symbol
+names through the chunk header. Hybrid helped a little only while doc comments were split
+from their code; with chunker v4 it is level with vector over 126 cases (0.774 vs 0.778).
+Rank fusion (RRF) and keyword hits on plain-language questions were worse.
 """
 from __future__ import annotations
 
@@ -131,7 +132,7 @@ def _ranked_candidates(store: Store, cache: VectorCache, db_lock: threading.Lock
 def search(store: Store, cache: VectorCache, embedder: Embedder, db_lock: threading.Lock,
            query: str, k: int = 8, path_globs: list[str] | None = None,
            modality: str | None = None, min_score: float | None = None,
-           per_file: int = 2, mode: str = "hybrid",
+           per_file: int = 2, mode: str = "vector",
            keyword_weight: float = DEFAULT_KEYWORD_WEIGHT) -> list[SearchResult]:
     if not query.strip():
         raise ValueError("query must not be empty")

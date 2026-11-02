@@ -103,7 +103,8 @@ class Settings:
     search_wait_s: float = 1.5
     preview_chars: int = 600
     per_file_results: int = 2
-    search_mode: str = field(default_factory=lambda: os.environ.get("SEMSEARCH_SEARCH_MODE", "hybrid"))
+    # vector by default: hybrid showed no gain over 126 eval cases (docs/EVAL_REAL_PROJECTS.md)
+    search_mode: str = field(default_factory=lambda: os.environ.get("SEMSEARCH_SEARCH_MODE", "vector"))
     keyword_weight: float = field(
         default_factory=lambda: _env_float("SEMSEARCH_KEYWORD_WEIGHT", DEFAULT_KEYWORD_WEIGHT))
 

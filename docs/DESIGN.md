@@ -182,7 +182,7 @@ CREATE VIRTUAL TABLE chunks_fts USING fts5(
 2. `encode_queries([query])` → 与 VectorCache 做矩阵乘法 → `argpartition` 取 `k * 4` 个候选。
 3. 过滤：`path_glob`、`modality`、`min_score`。
 4. 去重：每个文件最多保留 2 个块；相邻/重叠块合并为一个行区间。
-5. 混合检索（阶段 1.5，默认）：查询里有标识符形状的词时，FTS5 BM25 结果按"余弦 + 0.05 × 归一化 BM25"并入排序；其余查询为纯向量。RRF 等方案在评测中更差，见 `docs/PHASE1_5.md`。`SEMSEARCH_SEARCH_MODE=vector|keyword|hybrid` 可切换。
+5. 默认纯向量检索。另有可选的混合检索（阶段 1.5）：查询里有标识符形状的词时，FTS5 BM25 结果按"余弦 + 0.05 × 归一化 BM25"并入排序。分块器 v4 之后，在 126 道评测题上混合检索与纯向量持平（MRR 0.774 对 0.778），所以默认不启用，见 `docs/EVAL_REAL_PROJECTS.md`。`SEMSEARCH_SEARCH_MODE=vector|keyword|hybrid` 可切换；关键词索引照常建立。
 6. 返回 top-k：
 
 ```json
