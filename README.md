@@ -191,3 +191,8 @@ uv run python evals/run.py --modes "vector,hybrid,hybrid;tr=1" --show-misses
 
 - Images and PDFs (EmbeddingGemma 2 is multimodal)
 - Audio and video
+
+## License
+
+[MIT](LICENSE). EmbeddingGemma 2 is downloaded separately. Its use is governed by Google's own
+model terms on Hugging Face, not by this license.

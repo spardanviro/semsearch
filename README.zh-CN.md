@@ -136,3 +136,6 @@ uv run python evals/run.py --modes "vector,hybrid,hybrid;tr=1" --show-misses
 ## 计划
 - 图片和 PDF（EmbeddingGemma 2 支持多模态）
 - 音频和视频
+
+## 许可证
+本项目代码采用 [MIT](LICENSE) 许可证。EmbeddingGemma 2 模型不包含在仓库中，需要单独下载；模型的使用条款以 Google 在 Hugging Face 上发布的为准，不受 MIT 许可证约束。
