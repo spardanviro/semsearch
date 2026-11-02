@@ -3,11 +3,13 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import Annotated, Literal
 
 import anyio
 from mcp.server.mcpserver import MCPServer
+from pydantic import Field
 
-from semsearch.client import DaemonClient, DaemonUnavailable
+from semsearch.client import DaemonClient, DaemonRequestError, DaemonUnavailable
 from semsearch.formatting import format_search, format_status
 from semsearch.paths import find_project_root
 
@@ -39,16 +41,39 @@ def _call(fn: str, *args: object, **kwargs: object) -> dict[str, object]:
     return getattr(_client, fn)(*args, **kwargs)
 
 
+Modality = Literal["code", "text", "image", "pdf", "audio", "video"]
+
+
+def split_globs(value: str) -> list[str]:
+    """Comma-separated globs; commas inside {a,b} belong to the glob."""
+    out, depth, current = [], 0, ""
+    for ch in value:
+        depth += (ch == "{") - (ch == "}")
+        if ch == "," and depth <= 0:
+            out.append(current)
+            current, depth = "", 0
+        else:
+            current += ch
+    out.append(current)
+    return [g.strip() for g in out if g.strip()]
+
+
 @server.tool(description=SEARCH_DESCRIPTION)
-async def semantic_search(query: str, k: int = 8, path_glob: str | None = None,
-                          modality: str | None = None) -> str:
-    """query: natural-language description, in English; k: 1-50; path_glob: e.g. "src/**" or
-    "*.cs"; modality: "code", "text", or (when media indexing is on) "image", "pdf", "audio",
-    "video"."""
-    globs = [g.strip() for g in path_glob.split(",") if g.strip()] if path_glob else None
+async def semantic_search(
+        query: Annotated[str, Field(description="What the code does, in English")],
+        k: Annotated[int, Field(ge=1, le=50, description="Number of results")] = 8,
+        path_glob: Annotated[str | None, Field(description=(
+            'Limit to paths, gitignore-style, comma-separated: "src/**", "*.cs", '
+            '"**/*.{ts,tsx}", "!tests/**"'))] = None,
+        modality: Annotated[Modality | None, Field(description=(
+            'Only "code" or "text" (docs/config); "image", "pdf", "audio", "video" when '
+            "media indexing is on"))] = None) -> str:
+    globs = split_globs(path_glob) if path_glob else None
     try:
         data = await anyio.to_thread.run_sync(
             lambda: _call("search", _root, query, k, globs, modality))
+    except DaemonRequestError as exc:
+        return f"semantic search rejected the arguments: {exc}"
     except DaemonUnavailable as exc:
         return f"semantic search unavailable: {exc}. Fall back to Grep."
     return format_search(query, data)

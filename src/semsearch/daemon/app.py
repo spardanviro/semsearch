@@ -7,7 +7,7 @@ import secrets
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -83,7 +83,8 @@ class SearchRequest(RootRequest):
     k: int = Field(default=8, ge=1, le=50)
     path_globs: list[Annotated[str, Field(min_length=1, max_length=200)]] | None = Field(
         default=None, max_length=20)
-    modality: str | None = None
+    # a typo ("images") must be an error, not a silently empty result
+    modality: Literal["code", "text", "image", "pdf", "audio", "video"] | None = None
     min_score: float | None = Field(default=None, ge=-1.0, le=1.0)
 
 
@@ -105,9 +106,12 @@ def create_app(state: DaemonState, allowed_hosts: list[str] | None = None) -> Fa
     # defence in depth against DNS rebinding (the bearer token already blocks browsers)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts or LOCAL_HOSTS)
 
+    expected = f"Bearer {state.token}".encode()
+
     def auth(authorization: Annotated[str | None, Header()] = None) -> None:
-        expected = f"Bearer {state.token}"
-        if authorization is None or not secrets.compare_digest(authorization, expected):
+        # bytes: compare_digest raises on non-ASCII str, which turned bad headers into a 500
+        given = (authorization or "").encode("utf-8", "replace")
+        if not secrets.compare_digest(given, expected):
             raise HTTPException(status_code=401, detail="invalid token")
         state.last_activity = time.monotonic()
 

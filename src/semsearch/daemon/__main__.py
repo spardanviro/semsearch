@@ -19,6 +19,7 @@ from semsearch.embed.base import make_embedder
 log = logging.getLogger("semsearch.daemon")
 IDLE_CHECK_S = 15.0
 LOG_BYTES = 2_000_000
+REPLACE_ATTEMPTS = 8
 
 
 def setup_logging(settings: Settings) -> None:
@@ -39,7 +40,14 @@ def write_daemon_file(settings: Settings, port: int, token: str) -> None:
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)  # token: owner-only on POSIX
     with os.fdopen(fd, "w", encoding="utf-8") as fh:
         fh.write(body)
-    os.replace(tmp, settings.daemon_file)
+    for attempt in range(REPLACE_ATTEMPTS):
+        try:
+            os.replace(tmp, settings.daemon_file)
+            return
+        except PermissionError:   # Windows: a client is reading daemon.json right now
+            if attempt == REPLACE_ATTEMPTS - 1:
+                raise
+            time.sleep(0.02 * (attempt + 1))
 
 
 def remove_daemon_file(settings: Settings) -> None:

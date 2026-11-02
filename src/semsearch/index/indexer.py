@@ -47,10 +47,6 @@ class UpdateStats:
     chunks_reused: int = 0
     seconds: float = 0.0
 
-    def merge(self, other: UpdateStats) -> None:
-        for name in vars(self):
-            setattr(self, name, getattr(self, name) + getattr(other, name))
-
 
 @dataclass
 class _Pending:
@@ -63,6 +59,11 @@ class _Pending:
     @property
     def size(self) -> int:
         return len(self.media) or len(self.chunks)
+
+
+def _is_transient(exc: BaseException) -> bool:
+    """Out-of-memory (GPU busy elsewhere) may succeed later; other model errors will not."""
+    return isinstance(exc, MemoryError) or type(exc).__name__ == "OutOfMemoryError"
 
 
 def file_hash(path: Path) -> str:
@@ -223,7 +224,7 @@ class Indexer:
                 return out
             path, chunk = wanted[batch[0][0]]
             log.warning("cannot embed %s %s: %s", path.name, chunk.symbol, exc)
-            if isinstance(exc, MemoryError) or type(exc).__name__ == "OutOfMemoryError":
+            if _is_transient(exc):
                 transient.add(batch[0][0])
             return {}
 
@@ -257,37 +258,64 @@ class Indexer:
                 if h not in vectors:
                     missing.setdefault(h, c.text)
         stats.chunks_reused += sum(1 for h in all_hashes if h in vectors)
-        if missing:
-            embedded = self.embedder.encode_documents(list(missing.values()))
-            vectors.update(zip(missing.keys(), embedded, strict=True))
-            stats.chunks_embedded += len(missing)
         transient: set[str] = set()
+        if missing:
+            done = self._embed_texts(list(missing.items()), transient)
+            vectors.update(done)
+            stats.chunks_embedded += len(done)
         if missing_media:
-            done, transient = self._embed_media(missing_media)
+            done, media_transient = self._embed_media(missing_media)
+            transient |= media_transient
             vectors.update(done)
             stats.chunks_embedded += len(done)
 
         removed: list[int] = []
         added: list[tuple[int, str, str, np.ndarray]] = []
         now = time.time()
-        with self.db_lock, self.store.transaction():
-            for p in pending:
-                # a transient failure (GPU out of memory): store a stale mtime and hash so the
-                # next scan prepares the file again; finished chunks are reused by hash
-                retry = bool(transient.intersection(p.hashes))
-                fid = self.store.upsert_file(
-                    p.info.path, p.info.size, RETRY_MTIME if retry else p.info.mtime_ns,
-                    RETRY_HASH if retry else p.content_hash, p.info.modality, p.info.lang, now)
-                removed.extend(self.store.delete_chunks_of_file(fid))
-                rows = self._rows(p, vectors)
-                ids = self.store.insert_chunks(fid, rows)
-                added.extend((cid, p.info.path, p.info.modality, r.embedding)
-                             for cid, r in zip(ids, rows, strict=True))
-                if p.content_hash != UNREADABLE:
-                    stats.files_indexed += 1
-            # still under db_lock: searches never see the DB and the cache disagree
+        with self.db_lock:
+            with self.store.transaction():
+                self._write(pending, vectors, transient, now, removed, added, stats)
+            # after COMMIT, still under db_lock: a failed commit leaves the cache untouched,
+            # and searches never see the DB and the cache disagree
             self.cache.remove(removed)
             self.cache.add(added)
+
+    def _embed_texts(self, items: list[tuple[str, str]],
+                     transient: set[str]) -> dict[str, np.ndarray]:
+        """One chunk the model rejects must not abort the update: retry one by one."""
+        try:
+            vecs = self.embedder.encode_documents([text for _, text in items])
+            return dict(zip([h for h, _ in items], vecs, strict=True))
+        except Exception as exc:
+            if len(items) > 1:
+                log.warning("embedding %d chunks failed (%s); retrying one by one",
+                            len(items), exc)
+                out: dict[str, np.ndarray] = {}
+                for one in items:
+                    out.update(self._embed_texts([one], transient))
+                return out
+            log.warning("cannot embed a chunk (%d chars): %s", len(items[0][1]), exc)
+            if _is_transient(exc):
+                transient.add(items[0][0])
+            return {}
+
+    def _write(self, pending: list[_Pending], vectors: dict[str, np.ndarray],
+               transient: set[str], now: float, removed: list[int],
+               added: list[tuple[int, str, str, np.ndarray]], stats: UpdateStats) -> None:
+        for p in pending:
+            # a transient failure (GPU out of memory): store a stale mtime and hash so the
+            # next scan prepares the file again; finished chunks are reused by hash
+            retry = bool(transient.intersection(p.hashes))
+            fid = self.store.upsert_file(
+                p.info.path, p.info.size, RETRY_MTIME if retry else p.info.mtime_ns,
+                RETRY_HASH if retry else p.content_hash, p.info.modality, p.info.lang, now)
+            removed.extend(self.store.delete_chunks_of_file(fid))
+            rows = self._rows(p, vectors)
+            ids = self.store.insert_chunks(fid, rows)
+            added.extend((cid, p.info.path, p.info.modality, r.embedding)
+                         for cid, r in zip(ids, rows, strict=True))
+            if p.content_hash != UNREADABLE:
+                stats.files_indexed += 1
 
     @staticmethod
     def _rows(p: _Pending, vectors: dict[str, np.ndarray]) -> list[NewChunk]:
@@ -297,7 +325,8 @@ class Indexer:
                              c.preview, c.tokens, vectors[h],
                              keywords.document(f"{path} {c.symbol}"),
                              keywords.document(chunk_body(c.text)))
-                    for h, c in zip(p.hashes, p.chunks, strict=True)]
+                    for h, c in zip(p.hashes, p.chunks, strict=True)
+                    if h in vectors]           # chunks the model rejected are left out
         return [NewChunk(h, m.kind, None, None, m.symbol, MEDIA_KIND_LABEL[m.kind], m.preview, 0,
                          vectors[h], keywords.document(f"{path} {m.symbol}"),
                          keywords.document(m.text), m.page, m.t_start, m.t_end)

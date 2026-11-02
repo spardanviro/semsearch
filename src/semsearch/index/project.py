@@ -24,6 +24,7 @@ from semsearch.paths import project_key, to_abs, to_rel
 
 log = logging.getLogger(__name__)
 VANISHED_SPARE = 3   # extra results fetched so dropping deleted files still leaves k hits
+SCAN_FAILURE_BACKOFF_S = 60.0   # after a failed scan, searches wait this long before rescanning
 
 
 @dataclass
@@ -54,6 +55,7 @@ class Project:
         self._busy = False
         self._closed = False
         self._last_scan_request = 0.0
+        self._scan_backoff_until = 0.0
         self.last_scan_at: float | None = None
         self.last_stats: UpdateStats | None = None
         self.last_error: str | None = None
@@ -94,7 +96,8 @@ class Project:
 
     def request_scan(self, force: bool = False) -> bool:
         now = time.monotonic()
-        if not force and now - self._last_scan_request < self.settings.scan_cooldown_s:
+        if not force and (now - self._last_scan_request < self.settings.scan_cooldown_s
+                          or now < self._scan_backoff_until):
             return False
         self._last_scan_request = now
         self._submit(scan=True)
@@ -141,24 +144,31 @@ class Project:
                     return
                 jobs, self._jobs = self._jobs, _Jobs()
                 self._busy = True
+            full = jobs.rebuild or jobs.scan
             try:
                 self._execute(jobs)
-                self.last_error = None
+                if full:     # a path-only update succeeding says nothing about a failed scan
+                    self.last_error = None
+                    self._scan_backoff_until = 0.0
             except Exception as exc:  # keep the worker alive, surface the error in status
                 log.exception("indexing %s failed", self.root)
                 self.last_error = f"{type(exc).__name__}: {exc}"
+                if full:     # e.g. TooManyFiles: do not rescan the whole tree on every search
+                    self._scan_backoff_until = time.monotonic() + SCAN_FAILURE_BACKOFF_S
             finally:
                 with self._cond:
                     self._busy = False
                     self._cond.notify_all()
 
     def _execute(self, jobs: _Jobs) -> None:
-        if jobs.rebuild:
-            with self.db_lock:
-                self.store.clear()
-            self.cache.remove(self.cache.ids())
         if jobs.rebuild or jobs.scan:
+            # scan before clearing: a failing scan (TooManyFiles, rg timeout) must not leave a
+            # rebuild with an empty index
             current = scanner.scan(self.root, self.settings)
+            if jobs.rebuild:
+                with self.db_lock:
+                    self.store.clear()
+                    self.cache.remove(self.cache.ids())
             changed, deleted = diff(self.indexer.known_files(), current)
             self.last_scan_at = time.time()
         else:

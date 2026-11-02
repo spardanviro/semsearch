@@ -33,8 +33,16 @@ def cmd_status(args: argparse.Namespace) -> int:
 
 
 def cmd_reindex(args: argparse.Namespace) -> int:
-    data = DaemonClient().reindex(_root(args), args.full, args.paths or None)
-    print(json.dumps(data, ensure_ascii=False))
+    # paths are typed relative to the shell's cwd, not to the project root
+    paths = [str(Path(p).resolve()) for p in args.paths] if args.paths else None
+    data = DaemonClient().reindex(_root(args), args.full, paths)
+    if args.json:
+        print(json.dumps(data, ensure_ascii=False))
+    elif args.full:
+        print("full re-index started")
+    else:
+        accepted = data.get("accepted") or []
+        print(f"queued {len(accepted)} of {len(paths)} paths" if paths else "rescan queued")
     return 0
 
 
@@ -110,6 +118,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # previews are repository text (emoji, ✓, CJK): a piped stdout would use the ANSI code
+    # page and crash on the first character it cannot encode
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8", errors="replace")
     args = build_parser().parse_args(argv)
     try:
         return int(args.func(args))

@@ -62,7 +62,9 @@ def run(stdin_text: str, settings: Settings | None = None) -> int:
 
 
 def main() -> None:
-    sys.exit(run(sys.stdin.read()))
+    # Claude Code sends UTF-8 JSON; sys.stdin would decode it with the ANSI code page (GBK,
+    # cp1252, ...) and mangle every non-ASCII path
+    sys.exit(run(sys.stdin.buffer.read().decode("utf-8", "replace")))
 
 
 if __name__ == "__main__":

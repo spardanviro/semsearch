@@ -1,6 +1,7 @@
 """Client for the daemon: discovers it via daemon.json and starts it when needed."""
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -18,10 +19,16 @@ log = logging.getLogger(__name__)
 START_TIMEOUT_S = 120.0
 LOCK_STALE_S = START_TIMEOUT_S + 10   # a starter holds the lock at most START_TIMEOUT_S
 POLL_S = 0.25
+STDOUT_LOG = "daemon.stdout.log"
+STDOUT_LOG_MAX = 5_000_000
 
 
 class DaemonUnavailable(RuntimeError):
     pass
+
+
+class DaemonRequestError(DaemonUnavailable):
+    """The daemon is up but rejected the request (bad arguments): not worth a Grep fallback."""
 
 
 def _http(method: str, url: str, **kwargs: Any) -> httpx.Response:
@@ -44,12 +51,16 @@ class DaemonClient:
         return info if isinstance(info, dict) and {"port", "token"} <= info.keys() else None
 
     def _healthy(self, info: dict[str, Any], timeout: float = 2.0) -> bool:
+        """Our daemon answers /health with ok and its pid; a stale daemon.json can point at a
+        port some other local service now owns, which must not receive queries or the token."""
         try:
             r = _http("GET", f"http://127.0.0.1:{info['port']}/health", timeout=timeout,
                       headers={"Authorization": f"Bearer {info['token']}"})
-            return r.status_code == 200
-        except httpx.HTTPError:
+            body = r.json() if r.status_code == 200 else {}
+        except (httpx.HTTPError, ValueError):
             return False
+        return isinstance(body, dict) and body.get("ok") is True and (
+            "pid" not in info or body.get("pid") == info["pid"])
 
     def running(self) -> dict[str, Any] | None:
         info = self._info()
@@ -63,19 +74,31 @@ class DaemonClient:
             raise DaemonUnavailable("semsearch daemon is not running")
         owns_lock = self._acquire_lock()   # only one client spawns; the others just wait
         try:
-            if owns_lock:
-                self._start()
+            proc = self._start() if owns_lock else None
             deadline = time.monotonic() + START_TIMEOUT_S
             while time.monotonic() < deadline:
                 info = self.running()
                 if info:
                     return info
+                if proc is not None and proc.poll() is not None:
+                    # crashed on start (bad SEMSEARCH_* value, broken install): say so now
+                    # instead of waiting out the whole timeout
+                    raise DaemonUnavailable(f"daemon exited with code {proc.returncode}: "
+                                            f"{self._log_tail()}")
                 time.sleep(POLL_S)
         finally:
             if owns_lock:   # released on success *and* failure, so a crash never blocks retries
                 self.release_lock()
         raise DaemonUnavailable(
             f"daemon did not start within {START_TIMEOUT_S:.0f}s; see {self.settings.log_dir}")
+
+    def _log_tail(self, lines: int = 5) -> str:
+        try:
+            text = (self.settings.log_dir / STDOUT_LOG).read_text(encoding="utf-8",
+                                                                   errors="replace")
+        except OSError:
+            return f"see {self.settings.log_dir}"
+        return " | ".join(text.strip().splitlines()[-lines:]) or f"see {self.settings.log_dir}"
 
     # --- spawning -------------------------------------------------------------------------
     def _acquire_lock(self) -> bool:
@@ -86,35 +109,46 @@ class DaemonClient:
                 lock.unlink()
         except FileNotFoundError:
             pass
+        except OSError:            # PermissionError: Windows "delete pending" -> treat as taken
+            pass
         try:
             fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-        except FileExistsError:
+        except OSError:  # FileExistsError, or PermissionError while another client deletes it
             return False  # someone else is starting it; just wait for daemon.json
         os.write(fd, str(os.getpid()).encode())
         os.close(fd)
         return True
 
-    def _start(self) -> None:
+    def _start(self) -> subprocess.Popen[Any]:
         self.settings.log_dir.mkdir(parents=True, exist_ok=True)
-        out = open(self.settings.log_dir / "daemon.stdout.log", "ab")  # noqa: SIM115 (child owns it)
-        cmd = [sys.executable, "-m", "semsearch.daemon"]
-        kwargs: dict[str, Any] = {"stdin": subprocess.DEVNULL, "stdout": out, "stderr": out,
-                                  "cwd": str(self.settings.home), "close_fds": True}
-        if os.name == "nt":
-            base = (subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
-                    | subprocess.CREATE_NO_WINDOW)
-            try:  # escape the caller's job object so the daemon outlives the Claude session
-                subprocess.Popen(cmd, creationflags=base | subprocess.CREATE_BREAKAWAY_FROM_JOB,
-                                 **kwargs)
-            except OSError:
-                subprocess.Popen(cmd, creationflags=base, **kwargs)
-        else:
-            subprocess.Popen(cmd, start_new_session=True, **kwargs)
-        out.close()
+        log_path = self.settings.log_dir / STDOUT_LOG
+        try:   # only crash output lands here (the daemon logs to daemon.log); keep it small
+            if log_path.stat().st_size > STDOUT_LOG_MAX:
+                log_path.unlink()
+        except OSError:
+            pass
+        # -I: isolated mode, so the daemon never imports stray .py files from its cwd
+        cmd = [sys.executable, "-I", "-m", "semsearch.daemon"]
+        with open(log_path, "ab") as out:      # the child keeps its own handle
+            kwargs: dict[str, Any] = {"stdin": subprocess.DEVNULL, "stdout": out, "stderr": out,
+                                      "cwd": str(self.settings.home), "close_fds": True}
+            if os.name == "nt":
+                base = (subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
+                        | subprocess.CREATE_NO_WINDOW)
+                try:  # escape the caller's job object so the daemon outlives the Claude session
+                    proc = subprocess.Popen(
+                        cmd, creationflags=base | subprocess.CREATE_BREAKAWAY_FROM_JOB, **kwargs)
+                except OSError:
+                    proc = subprocess.Popen(cmd, creationflags=base, **kwargs)
+            else:
+                proc = subprocess.Popen(cmd, start_new_session=True, **kwargs)
         log.info("started semsearch daemon: %s", cmd)
+        return proc
 
     def release_lock(self) -> None:
-        self.settings.lock_file.unlink(missing_ok=True)
+        # OSError: Windows sharing violation; the stale-lock rule cleans it up later
+        with contextlib.suppress(OSError):
+            self.settings.lock_file.unlink(missing_ok=True)
 
     # --- requests -------------------------------------------------------------------------
     def request(self, path: str, payload: dict[str, Any] | None = None,
@@ -132,6 +166,8 @@ class DaemonClient:
         if r.status_code >= 400:
             detail = r.json().get("detail") if r.headers.get("content-type", "").startswith(
                 "application/json") else r.text
+            if r.status_code in (400, 422):    # bad arguments: the daemon itself is fine
+                raise DaemonRequestError(f"invalid request: {detail}")
             raise DaemonUnavailable(f"daemon error {r.status_code}: {detail}")
         data = r.json()
         if not isinstance(data, dict):
