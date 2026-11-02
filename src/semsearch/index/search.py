@@ -49,12 +49,21 @@ class SearchResult:
     score: float
     preview: str
     duplicates: tuple[str, ...] = ()   # other paths holding an identical chunk
+    page: int | None = None            # PDF page
+    t_start: float | None = None       # audio/video segment, seconds
+    t_end: float | None = None
 
     def to_dict(self) -> dict[str, object]:
-        return {"path": self.path, "lines": [self.start_line, self.end_line],
-                "symbol": self.symbol, "kind": self.kind, "modality": self.modality,
-                "score": round(self.score, 4), "preview": self.preview,
-                "duplicates": list(self.duplicates)}
+        out: dict[str, object] = {
+            "path": self.path, "lines": [self.start_line, self.end_line],
+            "symbol": self.symbol, "kind": self.kind, "modality": self.modality,
+            "score": round(self.score, 4), "preview": self.preview,
+            "duplicates": list(self.duplicates)}
+        if self.page is not None:
+            out["page"] = self.page
+        if self.t_start is not None:
+            out["t_start"], out["t_end"] = self.t_start, self.t_end
+        return out
 
 
 def path_filter_for(globs: list[str] | None) -> PathFilter | None:
@@ -162,7 +171,10 @@ def _collect(ranked: list[int], cosine: dict[int, float], meta: dict[int, ChunkH
         if min_score is not None and score < min_score:
             continue
         span = (hit.end_line or 0) - (hit.start_line or 0)
-        content_key = (hit.symbol, hit.preview, span)
+        # text copies have equal symbol/preview/span; media previews ("[audio 00:00-00:30 of
+        # 03:12]") repeat across different files, so media compares by content hash instead
+        content_key = ((hit.symbol, hit.preview, span) if hit.start_line is not None
+                       else ("media", hit.chunk_hash, 0))
         if content_key in by_content:
             i = by_content[content_key]
             if hit.path not in results[i].duplicates and hit.path != results[i].path:
@@ -172,7 +184,8 @@ def _collect(ranked: list[int], cosine: dict[int, float], meta: dict[int, ChunkH
         if len(same_file) >= per_file or any(_overlaps(hit, r) for r in same_file):
             continue
         res = SearchResult(hit.path, hit.start_line, hit.end_line, hit.symbol, hit.kind,
-                           hit.modality, score, hit.preview)
+                           hit.modality, score, hit.preview, page=hit.page,
+                           t_start=hit.t_start, t_end=hit.t_end)
         same_file.append(res)
         by_content[content_key] = len(results)
         results.append(res)

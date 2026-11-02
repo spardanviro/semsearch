@@ -10,6 +10,7 @@ Claude Code 平时用 Grep 和 LSP 找代码，前提是知道名字。semsearch
 - **增量更新**：只重新处理改动过的文件，只重新嵌入变化的代码块。Claude 每次编辑后由 hook 通知更新；在编辑器里保存、`git pull`、切分支，会在下次检索前扫描出来。
 - **按语法分块**：用 tree-sitter 按函数、方法、类切分代码，文档注释和它描述的代码放在同一块；Markdown 按标题切分。
 - **接入 Claude Code**：提供 MCP 工具、`semantic-search` 子代理、编辑 hook 和工具路由规则，Claude 会自己判断什么时候用。
+- **图片、PDF、音频、视频（可选）**：同样可以按内容检索，比如"蓝色爆炸序列帧"、"有体素可见性示意图的那一页"、"角色倒地瘫软的那段视频"。详见下方[媒体检索](#媒体检索)。
 
 ## 效果
 数字来自仓库里的评测集（`evals/`）。题目由没看过实现的子代理编写，每个答案都核对过源码。
@@ -88,6 +89,26 @@ semsearch daemon stop        # 释放显存；下次检索会自动重启
 - 还想排除别的，在项目根目录建 `.semsearchignore`，写法和 `.gitignore` 相同。
 - `.env*`、`*.pem`、`*.key`、`id_rsa*`、凭据文件等敏感文件一律跳过，忽略规则里写 `!` 也不能把它们加回来。
 
+## 媒体检索
+EmbeddingGemma 2 把文字、图片、音频、视频映射到同一个向量空间，所以用一句文字就能搜到这些媒体。媒体检索**默认关闭**，用下面的命令开启：
+```bash
+setx SEMSEARCH_MEDIA "image,pdf"     # 也可以写 image,pdf,audio,video，或直接写 all
+semsearch daemon stop
+```
+
+| 类型 | 一块是什么 | 结果中显示为 |
+|---|---|---|
+| image（png、jpg、webp、bmp、gif） | 整张图片（小于 32×32 的图标跳过） | `art/hero.png` |
+| pdf | 一页：页面文字加页面渲染图 | `docs/manual.pdf p.12` |
+| audio（wav、mp3、ogg、flac、m4a 等） | 30 秒一段，相邻两段重叠 5 秒 | `sfx/theme.ogg 01:05-01:35` |
+| video（mp4、webm、mkv、mov 等） | 20 秒一段，每秒取 1 帧；开启音频时连同这段的声音一起编码 | `clips/intro.mp4 00:40-01:00` |
+
+- 只加载已开启的类型需要的编码器，全部开启时约占 1.4 GB 显存。开启媒体检索或改动类型列表后，每个项目的索引会自动重建一次。
+- 图片和 PDF 的结果，Claude 可以直接用 Read 打开；PDF 结果会注明页码。音频和视频的结果只给出时间段。
+- 评测（30 题，素材来自 Godot 文档里的插图和视频，外加一篇论文）：图片 MRR 0.94，正确答案每次都在前 5；PDF 页和视频片段 83% 的题答案在前 5。详见 [docs/PHASE2_3.md](docs/PHASE2_3.md)。
+- 游戏项目里可能有成千上万张贴图，用不到的素材目录建议在 `.semsearchignore` 里排除。
+- 限制：单个文件最大 `SEMSEARCH_MAX_MEDIA_BYTES`（默认 500 MB）；每个 PDF 最多 `SEMSEARCH_MAX_PDF_PAGES` 页（默认 500 页）；每个音视频最多索引前 `SEMSEARCH_MAX_MEDIA_SECONDS` 秒（默认 3600 秒），超出部分不索引。
+
 ## 配置（环境变量）
 | 变量 | 默认值 | 说明 |
 |---|---|---|
@@ -110,6 +131,10 @@ semsearch daemon stop        # 释放显存；下次检索会自动重启
 - 其他模型：如果它的 sentence-transformers 配置里定义了 `query` / `document`，就用这两个；
 - 以上都没有：不加提示词。
 | `SEMSEARCH_TRUST_REMOTE_CODE` | `false` | 是否允许运行模型仓库自带的 Python 代码 |
+| `SEMSEARCH_MEDIA` | （关闭） | 要索引的媒体类型：`image`、`pdf`、`audio`、`video`，或 `all` |
+| `SEMSEARCH_MAX_MEDIA_BYTES` | `500000000` | 超过这个大小的媒体文件跳过 |
+| `SEMSEARCH_MAX_PDF_PAGES` | `500` | 每个 PDF 最多索引的页数 |
+| `SEMSEARCH_MAX_MEDIA_SECONDS` | `3600` | 每个音视频文件最多索引的时长（秒） |
 
 后台服务只在启动时读取这些配置。改完要执行 `semsearch daemon stop`，下次检索时服务会按新配置重新启动。这些变量要设成**用户环境变量**，这样不管后台服务是由 Claude Code 还是命令行拉起的，都能读到。
 
@@ -160,10 +185,6 @@ uv run python evals/run.py --modes "vector,hybrid,hybrid;tr=1" --show-misses
 ```
 - 题目放在 `evals/cases/`，格式参考 `semsearch.json`。
 - 私人项目的题目放 `evals/private/cases/`：这个目录不会被提交，评测时会自动读取。
-
-## 计划
-- 图片和 PDF（EmbeddingGemma 2 支持多模态）
-- 音频和视频
 
 ## 许可证
 本项目代码采用 [MIT](LICENSE) 许可证。EmbeddingGemma 2 模型不包含在仓库中，需要单独下载；模型的使用条款以 Google 在 Hugging Face 上发布的为准，不受 MIT 许可证约束。

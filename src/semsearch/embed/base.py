@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import re
-from typing import Protocol
+from typing import Any, Protocol
 
 import numpy as np
 
@@ -22,6 +22,9 @@ class Embedder(Protocol):
     def count_tokens(self, text: str) -> int: ...
     def encode_queries(self, texts: list[str]) -> np.ndarray: ...
     def encode_documents(self, texts: list[str]) -> np.ndarray: ...
+    # media inputs as built by index.media.load(): {"image": ...}, {"audio": ...}, {"video": ...}
+    # or interleaved {"text": "... <|image|>", "image": [...]}
+    def encode_media(self, items: list[dict[str, Any]]) -> np.ndarray: ...
 
 
 def normalize(mat: np.ndarray) -> np.ndarray:
@@ -39,6 +42,7 @@ class FakeEmbedder:
     def __init__(self, dim: int = EMBED_DIM) -> None:
         self.dim = dim
         self.documents_encoded = 0
+        self.media_encoded = 0
 
     def count_tokens(self, text: str) -> int:
         return len(text.split())
@@ -61,6 +65,28 @@ class FakeEmbedder:
         if not texts:
             return np.zeros((0, self.dim), dtype=np.float32)
         return normalize(np.stack([self._vec(t) for t in texts]))
+
+    def encode_media(self, items: list[dict[str, Any]]) -> np.ndarray:
+        """Text parts count as words (a PDF page is findable by its text); pixels and samples
+        only contribute a content fingerprint, so identical media get identical vectors."""
+        self.media_encoded += len(items)
+        if not items:
+            return np.zeros((0, self.dim), dtype=np.float32)
+        return normalize(np.stack([self._vec(_fingerprint(item)) for item in items]))
+
+
+def _fingerprint(item: dict[str, Any]) -> str:
+    parts: list[str] = [str(item.get("text", ""))]
+    for key in ("image", "audio", "video"):
+        value = item.get(key)
+        if value is None:
+            continue
+        values = value if isinstance(value, list) else [value]
+        for v in values:
+            data = v["array"] if isinstance(v, dict) else v
+            raw = data.tobytes() if hasattr(data, "tobytes") else repr(data).encode()
+            parts.append(f"{key} m{hashlib.blake2b(raw, digest_size=6).hexdigest()}")
+    return " ".join(parts)
 
 
 def make_embedder(settings: Settings) -> Embedder:

@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 from semsearch.client import DaemonClient, DaemonUnavailable
+from semsearch.config import MEDIA_KINDS
 from semsearch.formatting import format_search, format_status
 from semsearch.install import Targets, describe, install, script_path, shell_quote, uninstall
 from semsearch.paths import find_project_root
@@ -81,7 +82,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("query", nargs="+")
     s.add_argument("-k", type=int, default=8)
     s.add_argument("-g", "--glob", action="append", help="path glob filter, repeatable")
-    s.add_argument("-m", "--modality", choices=["code", "text"])
+    s.add_argument("-m", "--modality", choices=["code", "text", *MEDIA_KINDS])
     s.set_defaults(func=cmd_search)
 
     st = sub.add_parser("status", help="index status")

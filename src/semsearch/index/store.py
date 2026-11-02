@@ -65,6 +65,9 @@ class NewChunk:
     embedding: np.ndarray
     keywords_meta: str = ""    # keywords.document(path + symbol)
     keywords_body: str = ""    # keywords.document(chunk body)
+    page: int | None = None    # media: 1-based PDF page
+    t_start: float | None = None   # media: audio/video segment, seconds
+    t_end: float | None = None
 
 
 @dataclass(frozen=True)
@@ -80,6 +83,7 @@ class ChunkHit:
     symbol: str
     kind: str
     preview: str
+    chunk_hash: str = ""
 
 
 def to_blob(vec: np.ndarray) -> bytes:
@@ -191,11 +195,12 @@ class Store:
         ids = []
         for c in chunks:
             row = self.db.execute(
-                "INSERT INTO chunks(file_id, chunk_hash, modality, start_line, end_line, symbol, "
-                "kind, preview, tokens, embedding) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
-                "RETURNING id",
-                (file_id, c.chunk_hash, c.modality, c.start_line, c.end_line, c.symbol, c.kind,
-                 c.preview, c.tokens, to_blob(c.embedding))).fetchone()
+                "INSERT INTO chunks(file_id, chunk_hash, modality, start_line, end_line, page, "
+                "t_start, t_end, symbol, kind, preview, tokens, embedding) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
+                (file_id, c.chunk_hash, c.modality, c.start_line, c.end_line, c.page, c.t_start,
+                 c.t_end, c.symbol, c.kind, c.preview, c.tokens,
+                 to_blob(c.embedding))).fetchone()
             ids.append(int(row[0]))
             if c.keywords_meta or c.keywords_body:
                 self.db.execute("INSERT INTO chunks_fts(rowid, meta, body) VALUES (?, ?, ?)",
@@ -223,7 +228,7 @@ class Store:
             marks = ",".join("?" * len(part))
             rows = self.db.execute(
                 "SELECT c.id, f.path, c.modality, c.start_line, c.end_line, c.page, c.t_start, "
-                f"c.t_end, c.symbol, c.kind, c.preview FROM chunks c JOIN files f "
+                f"c.t_end, c.symbol, c.kind, c.preview, c.chunk_hash FROM chunks c JOIN files f "
                 f"ON f.id = c.file_id WHERE c.id IN ({marks})", part)
             for r in rows:
                 out[r[0]] = ChunkHit(*r)

@@ -7,7 +7,13 @@ import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from semsearch.config import CHUNKER_VERSION, KEYWORDS_VERSION, SCHEMA_VERSION, Settings
+from semsearch.config import (
+    CHUNKER_VERSION,
+    KEYWORDS_VERSION,
+    MEDIA_VERSION,
+    SCHEMA_VERSION,
+    Settings,
+)
 from semsearch.embed.base import Embedder
 from semsearch.index import scanner
 from semsearch.index.indexer import Indexer, UpdateStats, diff
@@ -57,6 +63,14 @@ class Project:
         self.request_scan(force=True)
 
     def _expected_meta(self) -> dict[str, str]:
+        meta = self._base_meta()
+        if self.settings.media:   # absent for text-only setups: their indexes stay valid
+            s = self.settings
+            meta["media"] = (f"{','.join(sorted(s.media))};v{MEDIA_VERSION};"
+                             f"pages={s.max_pdf_pages};seconds={s.max_media_seconds:g}")
+        return meta
+
+    def _base_meta(self) -> dict[str, str]:
         return {"schema_version": SCHEMA_VERSION, "chunker_version": CHUNKER_VERSION,
                 "keywords_version": KEYWORDS_VERSION,
                 "model_id": self.embedder.model_id, "dim": str(self.embedder.dim),

@@ -22,8 +22,17 @@ def one_line(value: object) -> str:
     return _CONTROL.sub("", str(value)).replace("\n", " ").replace("\r", " ")
 
 
+def clock(seconds: float) -> str:
+    s = int(round(seconds))
+    return f"{s // 3600}:{s // 60 % 60:02d}:{s % 60:02d}" if s >= 3600 else f"{s // 60:02d}:{s % 60:02d}"
+
+
 def _loc(r: dict[str, Any]) -> str:
     path = one_line(r.get("path", ""))
+    if r.get("page") is not None:
+        return f"{path} p.{int(r['page'])}"
+    if r.get("t_start") is not None and r.get("t_end") is not None:
+        return f"{path} {clock(float(r['t_start']))}-{clock(float(r['t_end']))}"
     start, end = r.get("lines") or (None, None)
     if start is None:
         return path

@@ -25,12 +25,31 @@ def is_embeddinggemma(model: str) -> bool:
     return "embeddinggemma" in model.lower()
 
 
+# EmbeddingGemma encoders to skip per load mode (model card: "Selective Encoder Loading").
+# PHASE0: vectors differ slightly between load modes, so the mode is part of the index meta.
+GEMMA_CONFIG_KWARGS: dict[str, dict[str, None]] = {
+    "text": {"vision_config": None, "audio_config": None},
+    "text+vision": {"audio_config": None},
+    "text+audio": {"vision_config": None},
+    "full": {},
+}
+VISION_KINDS = frozenset({"image", "pdf", "video"})
+
+
+def load_mode_for(model: str, media: frozenset[str]) -> str:
+    """Only the encoders the enabled media kinds need are loaded."""
+    if not is_embeddinggemma(model):
+        return "default"
+    vision, audio = bool(media & VISION_KINDS), "audio" in media
+    return {(False, False): "text", (True, False): "text+vision",
+            (False, True): "text+audio", (True, True): "full"}[(vision, audio)]
+
+
 class SentenceTransformerEmbedder:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.model_id = settings.model
-        # PHASE0: EmbeddingGemma text-only and full loading differ slightly -> recorded, never mixed
-        self.load_mode = "text" if is_embeddinggemma(settings.model) else "default"
+        self.load_mode = load_mode_for(settings.model, settings.media)
         self._lock = threading.Lock()       # GPU work
         self._tok_lock = threading.Lock()   # HF fast tokenizers are not safe across threads
         self._model: Any = None
@@ -54,8 +73,8 @@ class SentenceTransformerEmbedder:
             device = "cuda" if torch.cuda.is_available() else "cpu"
             dtype = torch.bfloat16 if device == "cuda" else torch.float32
             extra: dict[str, Any] = {}
-            if self.load_mode == "text":   # skip EmbeddingGemma's vision/audio encoders
-                extra["config_kwargs"] = {"vision_config": None, "audio_config": None}
+            if GEMMA_CONFIG_KWARGS.get(self.load_mode):   # skip encoders no media kind needs
+                extra["config_kwargs"] = GEMMA_CONFIG_KWARGS[self.load_mode]
             t0 = time.perf_counter()
             model = SentenceTransformer(
                 self.model_id, device=device, model_kwargs={"dtype": dtype},
@@ -70,7 +89,9 @@ class SentenceTransformerEmbedder:
         return self._model
 
     def _check_dim(self, model: Any) -> None:
-        native = int(model.get_sentence_embedding_dimension())
+        getter = (getattr(model, "get_embedding_dimension", None)          # ST >= 6.2
+                  or model.get_sentence_embedding_dimension)
+        native = int(getter())
         if self._dim is None:
             self._dim = native
         elif self._dim > native:
@@ -80,6 +101,11 @@ class SentenceTransformerEmbedder:
     def _seq_length(self, model: Any) -> int:
         """Never exceed the model's own limit: longer inputs can crash its position embeddings."""
         native = getattr(model, "max_seq_length", None)
+        if self.settings.media and isinstance(native, int) and native > 0:
+            # a PDF page (text + 266 image tokens) or a video segment (~3300 tokens) is far
+            # longer than a text chunk; truncating them breaks the image/audio token layout.
+            # Text chunks stay within max_tokens anyway (the chunker enforces it).
+            return native
         want = self.settings.max_tokens
         if isinstance(native, int) and 0 < native < want:
             log.warning("%s handles at most %d tokens; SEMSEARCH_MAX_TOKENS=%d is capped (lower "
@@ -96,7 +122,7 @@ class SentenceTransformerEmbedder:
         card, or literal prefix text."""
         prompts: dict[str, str] = getattr(model, "prompts", None) or {}
         if prompt is None:
-            if self.load_mode == "text":
+            if is_embeddinggemma(self.model_id):
                 return prompts.get(GEMMA_PROMPTS[role], "")
             return prompts.get(role, "")
         if prompt in prompts:
@@ -164,21 +190,31 @@ class SentenceTransformerEmbedder:
             batches.append(current)
         return batches
 
-    def _encode_batch(self, texts: list[str]) -> np.ndarray:
+    def encode_media(self, items: list[dict[str, Any]]) -> np.ndarray:
+        """Images / PDF pages / audio / video from index.media.load(); no prompt prefix (the
+        model card: prefixes apply to text only; PDF pages carry their own `title:` text)."""
+        if not items:
+            return np.zeros((0, self.dim), dtype=np.float32)
+        if self.load_mode in ("text", "default"):
+            raise RuntimeError("media embedding needs SEMSEARCH_MEDIA and an EmbeddingGemma model")
+        return self._encode_batch(items, media=True)
+
+    def _encode_batch(self, inputs: list[Any], media: bool = False) -> np.ndarray:
         import torch
         with self._lock:
             model = self._load()
+            prompt = {} if media else {"prompt": self._prompt(1)}
             try:
-                out = model.encode(texts, prompt=self._prompt(1), batch_size=len(texts),
-                                   convert_to_numpy=True, normalize_embeddings=False)
+                out = model.encode(inputs, batch_size=len(inputs), convert_to_numpy=True,
+                                   normalize_embeddings=False, **prompt)
             except torch.OutOfMemoryError:
-                if len(texts) == 1:
+                if len(inputs) == 1:
                     raise
                 torch.cuda.empty_cache()
-                log.warning("CUDA OOM on batch of %d, splitting", len(texts))
+                log.warning("CUDA OOM on batch of %d, splitting", len(inputs))
                 out = None
         if out is None:
-            half = len(texts) // 2
-            return np.concatenate([self._encode_batch(texts[:half]),
-                                   self._encode_batch(texts[half:])])
+            half = len(inputs) // 2
+            return np.concatenate([self._encode_batch(inputs[:half], media),
+                                   self._encode_batch(inputs[half:], media)])
         return self._finish(out)

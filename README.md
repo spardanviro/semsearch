@@ -19,6 +19,9 @@ similar to this snippet". It adds to Grep and LSP and replaces neither.
   doc comment stays in the same chunk as the code it describes. Markdown is split by heading.
 - **Built into Claude Code.** It ships an MCP tool, a `semantic-search` subagent, an
   edit hook and routing rules, so Claude picks the right tool by itself.
+- **Images, PDFs, audio and video (opt-in).** These are searchable by meaning too: "the blue
+  explosion sprite sheet", "the page with the voxel visibility diagram", "the clip where the
+  character goes limp". See [Media](#media).
 
 ## How well it works
 
@@ -125,6 +128,37 @@ semsearch daemon stop        # free GPU memory; the next search restarts it
 - **Secrets:** files such as `.env*`, `*.pem`, `*.key`, `id_rsa*` and credentials files are
   always skipped, even if an ignore rule tries to re-include them.
 
+## Media
+
+EmbeddingGemma 2 maps text, images, audio and video into one vector space, so a text question
+can find any of them. Media indexing is **off by default**. To turn it on:
+
+```bash
+setx SEMSEARCH_MEDIA "image,pdf"     # or: image,pdf,audio,video  /  all
+semsearch daemon stop
+```
+
+| Kind | One chunk is | Shown as |
+|---|---|---|
+| image (png, jpg, webp, bmp, gif) | the picture itself (icons under 32×32 are skipped) | `art/hero.png` |
+| pdf | one page: its text plus the rendered page | `docs/manual.pdf p.12` |
+| audio (wav, mp3, ogg, flac, m4a, …) | a 30 s window, with 5 s of overlap | `sfx/theme.ogg 01:05-01:35` |
+| video (mp4, webm, mkv, mov, …) | a 20 s segment at 1 frame per second, plus its sound if audio is enabled | `clips/intro.mp4 00:40-01:00` |
+
+- Only the encoders the enabled kinds need are loaded (all of them take about 1.4 GB of VRAM).
+  Turning media on, or changing the list, rebuilds each index once.
+- Claude can open image and PDF hits with Read (a PDF hit names its page). Audio and video
+  hits give a time range.
+- Benchmark (30 questions over Godot documentation images and clips plus a paper):
+  - **Images:** MRR 0.94, with the answer in the top 5 every time.
+  - **PDF pages and video segments:** the answer is in the top 5 for 83% of questions.
+  - Details: [docs/PHASE2_3.md](docs/PHASE2_3.md).
+- Game projects can hold thousands of textures. Exclude asset folders you never search with
+  `.semsearchignore`.
+- Limits: `SEMSEARCH_MAX_MEDIA_BYTES` (default 500 MB per file), `SEMSEARCH_MAX_PDF_PAGES`
+  (default 500) and `SEMSEARCH_MAX_MEDIA_SECONDS` (default 3600; longer recordings are indexed up
+  to that point).
+
 ## Configuration
 
 Settings come from environment variables:
@@ -151,6 +185,10 @@ When the two prompt variables are unset, the choice is automatic:
   config, if it defines them.
 - Otherwise no prompt is used.
 | `SEMSEARCH_TRUST_REMOTE_CODE` | `false` | allow the model repository to run its own Python code |
+| `SEMSEARCH_MEDIA` | *(off)* | media kinds to index: `image`, `pdf`, `audio`, `video`, or `all` |
+| `SEMSEARCH_MAX_MEDIA_BYTES` | `500000000` | larger media files are skipped |
+| `SEMSEARCH_MAX_PDF_PAGES` | `500` | pages indexed per PDF |
+| `SEMSEARCH_MAX_MEDIA_SECONDS` | `3600` | how much of each audio/video file is indexed |
 
 The daemon reads these settings when it starts. After changing one, run
 `semsearch daemon stop`; the next search starts the daemon again with the new values. Set them
@@ -236,11 +274,6 @@ uv run python evals/run.py --modes "vector,hybrid,hybrid;tr=1" --show-misses
 - Case files live in `evals/cases/`; see `semsearch.json` for the format.
 - Put cases about private projects in `evals/private/cases/`. That folder is gitignored and is
   picked up automatically.
-
-## Roadmap
-
-- Images and PDFs (EmbeddingGemma 2 is multimodal)
-- Audio and video
 
 ## License
 

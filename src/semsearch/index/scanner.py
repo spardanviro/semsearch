@@ -18,6 +18,8 @@ from semsearch.config import (
     CODE_LANGS,
     CONFIG_EXTS,
     DOC_EXTS,
+    MEDIA_EXTS,
+    MEDIA_KINDS,
     SENSITIVE_PATTERNS,
     SPECIAL_FILENAMES,
     Settings,
@@ -41,12 +43,13 @@ class FileInfo:
     path: str          # project-relative posix path
     size: int
     mtime_ns: int
-    modality: str      # "code" | "text"
-    lang: str
+    modality: str      # "code" | "text" | one of MEDIA_KINDS
+    lang: str          # language for text; file extension (no dot) for media
 
 
-def classify(rel_path: str) -> tuple[str, str] | None:
-    """-> (modality, lang) for indexable files, None otherwise."""
+def classify(rel_path: str, media: frozenset[str] = frozenset()) -> tuple[str, str] | None:
+    """-> (modality, lang) for indexable files, None otherwise. Media files count only when
+    their kind is enabled (SEMSEARCH_MEDIA)."""
     name = PurePosixPath(rel_path).name.lower()
     if name in SPECIAL_FILENAMES:
         return "code", SPECIAL_FILENAMES[name]
@@ -57,7 +60,18 @@ def classify(rel_path: str) -> tuple[str, str] | None:
         return "text", DOC_EXTS[ext]
     if ext in CONFIG_EXTS:
         return "text", CONFIG_EXTS[ext]
+    kind = MEDIA_EXTS.get(ext)
+    if kind is not None and kind in media:
+        return kind, ext.lstrip(".")
     return None
+
+
+def _size_limit(modality: str, lang: str, settings: Settings) -> int:
+    if modality in MEDIA_KINDS:
+        return settings.max_media_bytes
+    if lang in CONFIG_EXTS.values():
+        return settings.max_config_bytes
+    return settings.max_file_bytes
 
 
 class TooManyFiles(RuntimeError):
@@ -165,7 +179,7 @@ def filter_and_stat(root: Path, rel_paths: Iterable[str], settings: Settings) ->
     guard = _DirGuard(root)
     skip = excluded_dirs(root)
     for rel in rel_paths:
-        kind = classify(rel)
+        kind = classify(rel, settings.media)
         # sensitive patterns are checked separately so a repo's ignore file cannot re-include them
         if (kind is None or _in_excluded_dir(rel, skip) or _SENSITIVE.match_file(rel)
                 or ignore.match_file(rel)):
@@ -176,9 +190,7 @@ def filter_and_stat(root: Path, rel_paths: Iterable[str], settings: Settings) ->
             continue  # vanished between listing and stat
         if _is_link(st) or not stat.S_ISREG(st.st_mode) or not guard.inside(rel):
             continue  # never follow links out of the project
-        limit = settings.max_config_bytes if kind[1] in CONFIG_EXTS.values() \
-            else settings.max_file_bytes
-        if st.st_size == 0 or st.st_size > limit:
+        if st.st_size == 0 or st.st_size > _size_limit(kind[0], kind[1], settings):
             continue
         yield FileInfo(rel, st.st_size, st.st_mtime_ns, kind[0], kind[1])
 

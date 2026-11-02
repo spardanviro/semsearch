@@ -37,6 +37,18 @@ CONFIG_EXTS = {
     ".ini": "ini", ".cfg": "ini", ".xml": "xml", ".gradle": "groovy", ".cmake": "cmake",
 }
 SPECIAL_FILENAMES = {"dockerfile": "dockerfile", "makefile": "make", "cmakelists.txt": "cmake"}
+# media (phase 2/3): indexed only for kinds listed in SEMSEARCH_MEDIA
+MEDIA_KINDS = ("image", "pdf", "audio", "video")
+MEDIA_EXTS = {
+    ".png": "image", ".jpg": "image", ".jpeg": "image", ".webp": "image", ".bmp": "image",
+    ".gif": "image",
+    ".pdf": "pdf",
+    ".wav": "audio", ".mp3": "audio", ".ogg": "audio", ".flac": "audio", ".m4a": "audio",
+    ".aac": "audio", ".opus": "audio",
+    ".mp4": "video", ".webm": "video", ".mkv": "video", ".mov": "video", ".avi": "video",
+    ".m4v": "video",
+}
+MEDIA_VERSION = "1"     # bump when media segmentation/rendering changes: media chunks re-embed
 
 # never source, at any depth (compared case-insensitively)
 ALWAYS_EXCLUDE_DIRS = frozenset({
@@ -91,6 +103,21 @@ def _env_bool(name: str, default: bool) -> bool:
     raise ValueError(f"{name} must be true/false, got {raw!r}")
 
 
+def _env_media(name: str) -> frozenset[str]:
+    """`image,pdf,audio,video`, `all`, or empty/`none`."""
+    raw = os.environ.get(name, "").strip().lower()
+    if raw in ("", "none", "off", "0"):
+        return frozenset()
+    if raw == "all":
+        return frozenset(MEDIA_KINDS)
+    kinds = frozenset(k.strip() for k in raw.split(",") if k.strip())
+    unknown = kinds - set(MEDIA_KINDS)
+    if unknown:
+        raise ValueError(f"{name}: unknown media kinds {sorted(unknown)}; use any of "
+                         f"{', '.join(MEDIA_KINDS)} or 'all'")
+    return kinds
+
+
 def default_home() -> Path:
     return Path(os.environ.get("SEMSEARCH_HOME", Path.home() / ".cache" / "semsearch"))
 
@@ -120,6 +147,13 @@ class Settings:
         default_factory=lambda: _env_int("SEMSEARCH_CHUNK_TOKENS", 600))
     max_tokens: int = field(                 # hard limit = the model's max_seq_length
         default_factory=lambda: _env_int("SEMSEARCH_MAX_TOKENS", 1024))
+    # --- media (images, PDF pages, audio, video): off unless listed ---------------------------
+    media: frozenset[str] = field(default_factory=lambda: _env_media("SEMSEARCH_MEDIA"))
+    max_media_bytes: int = field(
+        default_factory=lambda: _env_int("SEMSEARCH_MAX_MEDIA_BYTES", 500_000_000))
+    max_pdf_pages: int = field(default_factory=lambda: _env_int("SEMSEARCH_MAX_PDF_PAGES", 500))
+    max_media_seconds: float = field(        # audio/video beyond this are indexed up to it
+        default_factory=lambda: _env_float("SEMSEARCH_MAX_MEDIA_SECONDS", 3600.0))
     window_lines: int = 60
     window_overlap: int = 15
     batch_token_budget: int = field(
@@ -152,6 +186,12 @@ class Settings:
         if self.max_tokens < MIN_MAX_TOKENS:
             raise ValueError(f"SEMSEARCH_MAX_TOKENS must be >= {MIN_MAX_TOKENS}, "
                              f"got {self.max_tokens}")
+        if self.media and "embeddinggemma" not in self.model.lower():
+            raise ValueError("SEMSEARCH_MEDIA needs a multimodal EmbeddingGemma model "
+                             f"(SEMSEARCH_MODEL={self.model!r})")
+        if self.max_pdf_pages <= 0 or self.max_media_seconds <= 0 or self.max_media_bytes <= 0:
+            raise ValueError("SEMSEARCH_MAX_PDF_PAGES / MAX_MEDIA_SECONDS / MAX_MEDIA_BYTES "
+                             "must be > 0")
         if not 0 < self.target_tokens <= self.max_tokens:
             raise ValueError(f"need 0 < SEMSEARCH_CHUNK_TOKENS ({self.target_tokens}) <= "
                              f"SEMSEARCH_MAX_TOKENS ({self.max_tokens})")

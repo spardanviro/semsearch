@@ -1,0 +1,32 @@
+{
+ "load_s": 5.3,
+ "load_vram_gb": 1.4,
+ "image:path-str": "ok 662 ms peak 1.48 GB",
+ "image:pil:albedo.png": "ok 201 ms peak 1.48 GB",
+ "image:pil:animtree_treeandplayersetup.png": "ok 232 ms peak 1.48 GB",
+ "image:pil:assetlib_editor.png": "ok 211 ms peak 1.48 GB",
+ "image:pil:clion-external-tools.png": "ok 232 ms peak 1.48 GB",
+ "image:pil:clion-run-configuration.png": "ok 222 ms peak 1.48 GB",
+ "image:pil:code_blocks_add_files_recursively.png": "ok 208 ms peak 1.48 GB",
+ "image:pil:code_blocks_new_empty_project.png": "ok 201 ms peak 1.48 GB",
+ "image:pil:code_blocks_project_title_and_location.png": "ok 201 ms peak 1.48 GB",
+ "pdf:interleaved": "ok 222 ms peak 1.49 GB",
+ "pdf:image-only": "ok 224 ms peak 1.48 GB",
+ "pdf_scores": {
+  "interleaved": 0.717788577079773,
+  "image_only": 0.6378155946731567
+ },
+ "audio:ndarray": "ok 229 ms peak 1.41 GB",
+ "audio:dict": "ok 110 ms peak 1.41 GB",
+ "audio:path": "FAIL ImportError: load_audio requires the librosa library. But that was not found in your environment. You can install them with pip:\n`pip install librosa`\nPlease note that you may need to restart your runtime after installation.\n\nTo install the required dependencies, run:\npip install -U \"sentence-t",
+ "video_frames": [
+  10,
+  416,
+  576,
+  3
+ ],
+ "video:frames-ndarray": "ok 772 ms peak 1.75 GB",
+ "video:frames-list": "ok 807 ms peak 1.75 GB",
+ "video:path": "FAIL ImportError: `torchcodec` is not installed and cannot be used to decode the video by default. Video decoding with `torchvision` is not available: `torchvision.io.read_video` was deprecated in `torchvision==0.22` and removed in `torchvision==0.26.0`. Please install `torchcodec` (`pip install tor",
+ "video+audio:interleaved": "ok 802 ms peak 1.75 GB"
+}

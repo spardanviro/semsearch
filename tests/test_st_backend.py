@@ -249,6 +249,39 @@ def test_load_caps_sequence_length_at_the_model_limit(
     assert "capped" in caplog.text
 
 
+@pytest.mark.parametrize(("media", "mode", "skipped"), [
+    (frozenset(), "text", {"vision_config": None, "audio_config": None}),
+    (frozenset({"image", "pdf"}), "text+vision", {"audio_config": None}),
+    (frozenset({"audio"}), "text+audio", {"vision_config": None}),
+    (frozenset({"video", "audio"}), "full", None),
+])
+def test_load_only_encoders_the_media_kinds_need(
+        fake_st: type[FakeSentenceTransformer], monkeypatch: pytest.MonkeyPatch,
+        media: frozenset[str], mode: str, skipped: dict[str, None] | None) -> None:
+    monkeypatch.setattr(fake_st, "prompts", PROMPTS)
+    monkeypatch.setattr(fake_st, "native_dim", 768)
+    emb, model = loaded(media=media)
+
+    assert emb.load_mode == mode
+    assert model.kwargs.get("config_kwargs") == skipped
+
+
+def test_encode_media_passes_no_prompt_and_needs_media_mode(
+        fake_st: type[FakeSentenceTransformer], monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[dict[str, Any]] = []
+    monkeypatch.setattr(fake_st, "native_dim", 768)
+    monkeypatch.setattr(fake_st, "encode", lambda self, items, **kw: (
+        calls.append(kw), np.ones((len(items), 768), dtype=np.float32))[1])
+    text_only = SentenceTransformerEmbedder(Settings())
+    with_media = SentenceTransformerEmbedder(replace(Settings(), media=frozenset({"image"})))
+
+    out = with_media.encode_media([{"image": "a"}, {"image": "b"}])
+
+    assert out.shape == (2, 768) and "prompt" not in calls[-1]
+    with pytest.raises(RuntimeError, match="SEMSEARCH_MEDIA"):
+        text_only.encode_media([{"image": "a"}])
+
+
 def test_dim_of_unknown_model_loads_it_once(fake_st: type[FakeSentenceTransformer]) -> None:
     emb = SentenceTransformerEmbedder(replace(Settings(), model="BAAI/bge-m3"))
 

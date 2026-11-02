@@ -124,6 +124,9 @@ class StubEmbedder:
     def encode_documents(self, texts: list[str]) -> np.ndarray:
         raise NotImplementedError
 
+    def encode_media(self, items: list[dict[str, object]]) -> np.ndarray:
+        raise NotImplementedError
+
 
 @pytest.fixture
 def indexed(store: Store) -> tuple[Store, VectorCache, dict[str, int]]:

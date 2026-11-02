@@ -113,6 +113,8 @@ def matches(result: SearchResult, exp: dict[str, object], aliases: tuple[str, ..
         return True
     if symbol is not None and str(symbol) in re.split(r"[.,\s]+", result.symbol):
         return True
+    if isinstance(lines, list) and result.page is not None:      # PDF: lines = page range
+        return int(lines[0]) <= result.page <= int(lines[1])
     if result.start_line is None or result.end_line is None:
         return False
     if isinstance(lines, list):
