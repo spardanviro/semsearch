@@ -1,0 +1,304 @@
+{
+ "corpus_chunks": 1116,
+ "expected_names_not_in_corpus": [
+  "configparser.RawConfigParser._read_inner",
+  "fnmatch._translate"
+ ],
+ "text_only": {
+  "load_s": 2.3,
+  "vram_after_load_mb": 516.9,
+  "params_m": 271.0,
+  "throughput": [
+   {
+    "batch": 8,
+    "chunks_per_s": 65.1,
+    "peak_vram_mb": 1506.9
+   },
+   {
+    "batch": 16,
+    "chunks_per_s": 69.1,
+    "peak_vram_mb": 2464.5
+   },
+   {
+    "batch": 32,
+    "chunks_per_s": 56.8,
+    "peak_vram_mb": 4403.9
+   },
+   {
+    "batch": 64,
+    "chunks_per_s": 23.9,
+    "peak_vram_mb": 8282.8
+   }
+  ],
+  "full_corpus_encode_s": 16.6
+ },
+ "chunk_tokens": {
+  "mean": 206,
+  "p50": 121,
+  "p95": 657,
+  "max": 3157,
+  "over_1024": 21
+ },
+ "retrieval": {
+  "SearchQuery": {
+   "768": {
+    "R@1": 0.5,
+    "R@5": 0.8,
+    "R@10": 0.9,
+    "MRR": 0.654,
+    "misses": [
+     {
+      "q": "pretty-print nested data structures with indentation",
+      "top3": [
+       "pprint.PrettyPrinter._format_dict_items",
+       "pprint.PrettyPrinter._pprint_dict",
+       "pprint.PrettyPrinter._pprint_list"
+      ]
+     },
+     {
+      "q": "把 URL 查询字符串解析成字典",
+      "top3": [
+       "parse._splitquery",
+       "parse.ParseResult.geturl",
+       "parse.ParseResultBytes.geturl"
+      ]
+     },
+     {
+      "q": "解析 INI 配置文件",
+      "top3": [
+       "csv.Sniffer.__init__",
+       "configparser.RawConfigParser.__init__",
+       "argparse.ArgumentParser.parse_known_args"
+      ]
+     }
+    ]
+   },
+   "256": {
+    "R@1": 0.5,
+    "R@5": 0.8,
+    "R@10": 0.867,
+    "MRR": 0.622,
+    "misses": [
+     {
+      "q": "pretty-print nested data structures with indentation",
+      "top3": [
+       "pprint.PrettyPrinter._format_dict_items",
+       "pprint.PrettyPrinter._pprint_dict",
+       "pprint.PrettyPrinter._pprint_list"
+      ]
+     },
+     {
+      "q": "parse an INI style configuration file",
+      "top3": [
+       "configparser.RawConfigParser.__init__",
+       "configparser.Interpolation.before_read",
+       "configparser.RawConfigParser._unify_values"
+      ]
+     },
+     {
+      "q": "把 URL 查询字符串解析成字典",
+      "top3": [
+       "parse._splitattr",
+       "parse.SplitResult.geturl",
+       "parse.ParseResult.geturl"
+      ]
+     },
+     {
+      "q": "解析 INI 配置文件",
+      "top3": [
+       "configparser.InterpolationError.__init__",
+       "argparse.FileType.__init__",
+       "argparse.ArgumentParser.parse_known_args"
+      ]
+     }
+    ]
+   },
+   "128": {
+    "R@1": 0.567,
+    "R@5": 0.733,
+    "R@10": 0.833,
+    "MRR": 0.63,
+    "misses": [
+     {
+      "q": "percent-encode a string so it is safe in a URL",
+      "top3": [
+       "base64.b64encode",
+       "base64.urlsafe_b64encode",
+       "parse._ResultMixinStr.encode"
+      ]
+     },
+     {
+      "q": "pretty-print nested data structures with indentation",
+      "top3": [
+       "pprint.PrettyPrinter._pprint_dict",
+       "pprint.PrettyPrinter._format_dict_items",
+       "pprint.PrettyPrinter._pprint_list"
+      ]
+     },
+     {
+      "q": "递归复制整个目录",
+      "top3": [
+       "glob._rlistdir",
+       "pprint._recursion",
+       "argparse._copy_items"
+      ]
+     },
+     {
+      "q": "把 URL 查询字符串解析成字典",
+      "top3": [
+       "parse.SplitResult.geturl",
+       "parse.SplitResultBytes.geturl",
+       "parse._splitattr"
+      ]
+     },
+     {
+      "q": "解析 INI 配置文件",
+      "top3": [
+       "argparse.ArgumentParser.parse_args",
+       "argparse.ArgumentParser.parse_intermixed_args",
+       "argparse.MetavarTypeHelpFormatter._get_default_metavar_for_optional"
+      ]
+     }
+    ]
+   }
+  },
+  "CodeRetrieval": {
+   "768": {
+    "R@1": 0.433,
+    "R@5": 0.733,
+    "R@10": 0.9,
+    "MRR": 0.583,
+    "misses": [
+     {
+      "q": "percent-encode a string so it is safe in a URL",
+      "top3": [
+       "parse._ResultMixinStr.encode",
+       "client.HTTPConnection._encode_request",
+       "encoder.py_encode_basestring"
+      ]
+     },
+     {
+      "q": "把 URL 查询字符串解析成字典",
+      "top3": [
+       "parse._splitquery",
+       "parse.ParseResultBytes.geturl",
+       "parse.ParseResult.geturl"
+      ]
+     },
+     {
+      "q": "解析 INI 配置文件",
+      "top3": [
+       "csv.Sniffer.__init__",
+       "argparse.FileType.__init__",
+       "configparser.Interpolation.before_read"
+      ]
+     }
+    ]
+   },
+   "256": {
+    "R@1": 0.433,
+    "R@5": 0.733,
+    "R@10": 0.867,
+    "MRR": 0.576,
+    "misses": [
+     {
+      "q": "percent-encode a string so it is safe in a URL",
+      "top3": [
+       "parse._ResultMixinStr.encode",
+       "parse._encode_result",
+       "client.HTTPConnection._encode_request"
+      ]
+     },
+     {
+      "q": "把 URL 查询字符串解析成字典",
+      "top3": [
+       "parse.ParseResult.geturl",
+       "parse.ParseResultBytes.geturl",
+       "parse.SplitResult.geturl"
+      ]
+     },
+     {
+      "q": "命令执行超时后杀掉子进程",
+      "top3": [
+       "subprocess.TimeoutExpired.__str__",
+       "subprocess.TimeoutExpired.stdout",
+       "subprocess.TimeoutExpired.__init__"
+      ]
+     },
+     {
+      "q": "解析 INI 配置文件",
+      "top3": [
+       "configparser.InterpolationError.__init__",
+       "configparser.Error.__init__",
+       "argparse.FileType.__init__"
+      ]
+     }
+    ]
+   },
+   "128": {
+    "R@1": 0.333,
+    "R@5": 0.667,
+    "R@10": 0.833,
+    "MRR": 0.477,
+    "misses": [
+     {
+      "q": "percent-encode a string so it is safe in a URL",
+      "top3": [
+       "parse._encode_result",
+       "client.HTTPConnection._encode_request",
+       "parse._ResultMixinStr.encode"
+      ]
+     },
+     {
+      "q": "递归复制整个目录",
+      "top3": [
+       "glob._rlistdir",
+       "__init__.LZMACompressor.flush",
+       "csv.DictReader.__iter__"
+      ]
+     },
+     {
+      "q": "把 URL 查询字符串解析成字典",
+      "top3": [
+       "parse.SplitResultBytes.geturl",
+       "parse.SplitResult.geturl",
+       "parse.ParseResult.geturl"
+      ]
+     },
+     {
+      "q": "计算两个目录之间的相对路径",
+      "top3": [
+       "__init__.LZMACompressor.flush",
+       "glob._rlistdir",
+       "__init__._gen_crc"
+      ]
+     },
+     {
+      "q": "解析 INI 配置文件",
+      "top3": [
+       "configparser.SectionProxy.parser",
+       "argparse.FileType.__init__",
+       "argparse.ArgumentParser.convert_arg_line_to_args"
+      ]
+     }
+    ]
+   }
+  }
+ },
+ "full": {
+  "load_s": 4.6,
+  "vram_after_load_mb": 1957.8,
+  "params_m": 744.4
+ },
+ "text_only_vs_full_cosine": {
+  "min": 0.9961649775505066,
+  "mean": 1.0013700723648071
+ },
+ "image_smoke": {
+  "ok": true,
+  "dim": 768,
+  "peak_vram_mb": 2031.9,
+  "sim_blue_square": 0.7383763194084167,
+  "sim_http_client": 0.5555744171142578
+ }
+}

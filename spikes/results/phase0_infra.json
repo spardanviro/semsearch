@@ -1,0 +1,155 @@
+{
+ "sqlite_vec": {
+  "sqlite_version": "3.50.4",
+  "vec_version": "v0.1.9",
+  "insert_50k_s": 9.47,
+  "knn_k32_ms": 93.3,
+  "knn_self_hit_first": true,
+  "numpy_bruteforce_ms": 3.0,
+  "delete_reinsert_5k_s": 6.07,
+  "count_after": 50000,
+  "fts5_ok": true,
+  "db_size_50k_mb": 163.4
+ },
+ "tree_sitter": {
+  "samples": {
+   "python": [
+    [
+     "class_definition",
+     1,
+     3
+    ],
+    [
+     "function_definition",
+     2,
+     3
+    ],
+    [
+     "function_definition",
+     5,
+     6
+    ]
+   ],
+   "typescript": [
+    [
+     "class_declaration",
+     1,
+     1
+    ],
+    [
+     "method_definition",
+     1,
+     1
+    ],
+    [
+     "function_declaration",
+     2,
+     2
+    ]
+   ],
+   "go": [
+    [
+     "method_declaration",
+     2,
+     2
+    ],
+    [
+     "function_declaration",
+     3,
+     3
+    ]
+   ],
+   "csharp": [
+    [
+     "class_declaration",
+     1,
+     1
+    ],
+    [
+     "property_declaration",
+     1,
+     1
+    ],
+    [
+     "method_declaration",
+     1,
+     1
+    ]
+   ]
+  },
+  "real_csharp": [
+   {
+    "file": "Main.Rendering.cs",
+    "kb": 100.9,
+    "lines": 1968,
+    "defs": 99,
+    "parse_ms": 20.8,
+    "first": [
+     [
+      "class_declaration",
+      10,
+      1966
+     ],
+     [
+      "method_declaration",
+      15,
+      39
+     ],
+     [
+      "method_declaration",
+      42,
+      76
+     ]
+    ]
+   },
+   {
+    "file": "Main.Rendering.cs",
+    "kb": 100.9,
+    "lines": 1968,
+    "defs": 99,
+    "parse_ms": 19.6,
+    "first": [
+     [
+      "class_declaration",
+      10,
+      1966
+     ],
+     [
+      "method_declaration",
+      15,
+      39
+     ],
+     [
+      "method_declaration",
+      42,
+      76
+     ]
+    ]
+   },
+   {
+    "file": "Main.Rendering.cs",
+    "kb": 92.5,
+    "lines": 1957,
+    "defs": 98,
+    "parse_ms": 19.5,
+    "first": [
+     [
+      "class_declaration",
+      10,
+      1955
+     ],
+     [
+      "method_declaration",
+      15,
+      39
+     ],
+     [
+      "method_declaration",
+      42,
+      76
+     ]
+    ]
+   }
+  ]
+ }
+}

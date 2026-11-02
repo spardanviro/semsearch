@@ -1,0 +1,5 @@
+# 代码导航
+- 精确标识符、字符串、正则、需要列出全部出现位置 → Grep / Glob。
+- 跳转定义、查找引用、调用层级、改动影响面 → LSP 工具（pyright、csharp-ls）。LSP 不支持或无结果时回退到 Grep。
+- 只知道功能或意图、不知道名字（"哪里处理下载失败重试"、"和这段类似的代码"）→ `mcp__semsearch__semantic_search`；开放式、需要多轮查找核实的问题 → `semantic-search` subagent。中文问题可再用英文改写查一次。
+- 语义检索找到符号后，要确认全部引用时转回 LSP 或 Grep。
