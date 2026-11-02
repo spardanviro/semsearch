@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 import time
@@ -28,9 +29,19 @@ HERE = Path(__file__).resolve().parent
 CUTOFFS = (1, 5, 10)
 TOP_K = max(CUTOFFS)
 INDEX_TIMEOUT_S = 1800
-TRANSLATIONS: dict[str, str] = {
-    k: v for k, v in json.loads((HERE / "cases" / "translations_en.json").read_text(
-        encoding="utf-8")).items() if not k.startswith("_")}
+PRIVATE = HERE / "private"   # gitignored: cases about projects that must stay local
+
+
+def _load_translations() -> dict[str, str]:
+    out: dict[str, str] = {}
+    for path in (HERE / "cases" / "translations_en.json", PRIVATE / "translations_en.json"):
+        if path.exists():
+            data = json.loads(path.read_text(encoding="utf-8"))
+            out.update({k: v for k, v in data.items() if not k.startswith("_")})
+    return out
+
+
+TRANSLATIONS = _load_translations()
 
 
 @dataclass(frozen=True)
@@ -45,7 +56,11 @@ def load_suite(path: Path) -> tuple[Path, tuple[str, ...], list[Case]]:
     data = json.loads(path.read_text(encoding="utf-8"))
     cases = [Case(path.stem, c["q"], tuple(c.get("tags", ())), tuple(c["expect"]))
              for c in data["cases"]]
-    return Path(data["project"]), tuple(data.get("aliases", ())), cases
+    # "~/..." and $VARS are expanded; relative paths are taken from the repository root
+    root = Path(os.path.expandvars(os.path.expanduser(data["project"])))
+    if not root.is_absolute():
+        root = (HERE.parent / root).resolve()
+    return root, tuple(data.get("aliases", ())), cases
 
 
 def _norm(path: str, aliases: tuple[str, ...]) -> str:
@@ -176,7 +191,8 @@ def main() -> None:
     ap.add_argument("--out", type=Path, default=HERE / "results" / "latest.json")
     args = ap.parse_args()
     modes = args.modes.split(",")
-    suites = args.suites or sorted(p for p in (HERE / "cases").glob("*.json")
+    suites = args.suites or sorted(p for d in (HERE / "cases", PRIVATE / "cases")
+                                   for p in d.glob("*.json")
                                    if not p.name.startswith("translations"))
     settings = replace(Settings(), home=args.home)
     embedder = make_embedder(settings)
