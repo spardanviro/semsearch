@@ -15,6 +15,7 @@ from semsearch.client import DaemonClient
 from semsearch.config import Settings
 from semsearch.daemon.app import DaemonState, create_app
 from semsearch.embed.base import make_embedder
+from semsearch.permissions import make_private
 
 log = logging.getLogger("semsearch.daemon")
 IDLE_CHECK_S = 15.0
@@ -79,6 +80,7 @@ def warm_up(state: DaemonState) -> None:
 
 def main() -> None:
     settings = Settings()
+    make_private(settings.home)    # before the token file and indexes are (re)written
     setup_logging(settings)
     existing = DaemonClient(settings, autostart=False).running()
     if existing and existing.get("pid") != os.getpid():

@@ -84,9 +84,14 @@ def segment(path: Path, kind: str, settings: Settings) -> list[MediaChunk]:
     raise ValueError(f"unknown media kind {kind!r}")
 
 
+# Pillow detects formats by content, not extension: a crafted "cat.png" could be EPS, which
+# Pillow hands to Ghostscript. Only the formats we index are ever opened.
+IMAGE_FORMATS = ("PNG", "JPEG", "WEBP", "BMP", "GIF")
+
+
 def _segment_image(path: Path) -> list[MediaChunk]:
     from PIL import Image
-    with Image.open(path) as img:            # reads the header only
+    with Image.open(path, formats=IMAGE_FORMATS) as img:     # reads the header only
         width, height = img.size
     if width < MIN_IMAGE_SIDE and height < MIN_IMAGE_SIDE:
         return []
@@ -178,7 +183,7 @@ def _audio_input(samples: np.ndarray) -> dict[str, Any]:
 
 def _load_image(path: Path) -> Any:
     from PIL import Image
-    with Image.open(path) as img:
+    with Image.open(path, formats=IMAGE_FORMATS) as img:
         img.seek(0)                                    # first frame of a GIF
         img.draft("RGB", (IMAGE_MAX_SIDE, IMAGE_MAX_SIDE))   # JPEG: decode already downscaled
         if img.mode in ("P", "LA") or "transparency" in img.info:

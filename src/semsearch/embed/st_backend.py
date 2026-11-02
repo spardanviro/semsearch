@@ -63,7 +63,8 @@ class SentenceTransformerEmbedder:
         if self._tokenizer is None:
             from transformers import AutoTokenizer
             self._tokenizer = AutoTokenizer.from_pretrained(
-                self.model_id, trust_remote_code=self.settings.trust_remote_code)
+                self.model_id, revision=self.settings.revision,
+                trust_remote_code=self.settings.trust_remote_code)
         return self._tokenizer
 
     def _load(self) -> Any:
@@ -76,8 +77,12 @@ class SentenceTransformerEmbedder:
             if GEMMA_CONFIG_KWARGS.get(self.load_mode):   # skip encoders no media kind needs
                 extra["config_kwargs"] = GEMMA_CONFIG_KWARGS[self.load_mode]
             t0 = time.perf_counter()
+            if self.settings.trust_remote_code and not self.settings.revision:
+                log.warning("SEMSEARCH_TRUST_REMOTE_CODE without SEMSEARCH_MODEL_REVISION: code "
+                            "from the latest commit of %s will run", self.model_id)
             model = SentenceTransformer(
                 self.model_id, device=device, model_kwargs={"dtype": dtype},
+                revision=self.settings.revision,
                 trust_remote_code=self.settings.trust_remote_code, **extra)
             model.max_seq_length = self._seq_length(model)
             self._check_dim(model)

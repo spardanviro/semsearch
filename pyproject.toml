@@ -21,6 +21,7 @@ dependencies = [
     "mcp",
     "pypdfium2>=5.14.0",
     "av>=19.0.2",
+    "google-re2>=1.1.20251105",
 ]
 
 [project.scripts]

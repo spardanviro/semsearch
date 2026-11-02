@@ -2,16 +2,32 @@
 # Keep the uv-tool copy of semsearch (what Claude Code runs) in sync with committed code.
 # Enabled by: git config core.hooksPath .githooks
 # Skip once with: SEMSEARCH_SKIP_SYNC=1 git commit ...
+#
+# Builds from a snapshot of HEAD (never from uncommitted edits in the working tree) and pins
+# every dependency to uv.lock, so the installed tool matches what was tested.
 
 [ -n "$SEMSEARCH_SKIP_SYNC" ] && exit 0
 
-# only when the commit touched package code or dependencies
-changed=$(git diff-tree --root --no-commit-id --name-only -r HEAD | grep -E '^(src/|pyproject\.toml|uv\.lock)')
+# only when the commit touched package code or dependencies (-m: merges compare to parents)
+changed=$(git diff-tree -m --root --no-commit-id --name-only -r HEAD \
+          | grep -E '^(src/|pyproject\.toml|uv\.lock)')
 [ -z "$changed" ] && exit 0
 
-echo "semsearch: syncing uv tool install..."
-# rebuild only semsearch itself; dependencies come from the uv cache
-if ! uv tool install . --python 3.12 --reinstall-package semsearch --quiet; then
+echo "semsearch: syncing uv tool install from HEAD..."
+tmp=$(mktemp -d) || exit 0
+trap 'rm -rf "$tmp"' EXIT
+if ! git archive HEAD | tar -x -C "$tmp"; then
+    echo "semsearch: tool sync FAILED (git archive)" >&2
+    exit 0
+fi
+if ! uv export --frozen --no-dev --no-hashes --no-emit-project --quiet \
+        -o "$tmp/constraints.txt"; then
+    echo "semsearch: tool sync FAILED (uv export)" >&2
+    exit 0
+fi
+# rebuild only semsearch itself; dependencies stay at their locked versions
+if ! uv tool install "$tmp" --python 3.12 --reinstall-package semsearch \
+        --constraints "$tmp/constraints.txt" --quiet; then
     echo "semsearch: tool sync FAILED - run: uv tool install . --python 3.12 --reinstall" >&2
     exit 0   # never fail the commit (post-commit cannot undo it anyway)
 fi

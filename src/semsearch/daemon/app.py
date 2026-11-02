@@ -17,7 +17,7 @@ from semsearch import __version__
 from semsearch.config import Settings
 from semsearch.embed.base import Embedder
 from semsearch.index.project import Project
-from semsearch.paths import normalize_root, project_key
+from semsearch.paths import normalize_root, project_key, refuse_root
 
 log = logging.getLogger(__name__)
 
@@ -41,6 +41,9 @@ class DaemonState:
             path = normalize_root(root)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        refusal = refuse_root(path, self.settings)
+        if refusal:
+            raise HTTPException(status_code=400, detail=refusal)
         key = str(path).lower() if os.name == "nt" else str(path)
         with self.lock:
             proj = self.projects.get(key)
@@ -137,8 +140,13 @@ def create_app(state: DaemonState, allowed_hosts: list[str] | None = None) -> Fa
                                          req.min_score)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-        return {"results": [r.to_dict() for r in results], "fresh": fresh,
-                "index": proj.status()}
+        out: dict[str, object] = {"results": [r.to_dict() for r in results], "fresh": fresh,
+                                  "index": proj.status()}
+        if not results and req.path_globs and not proj.any_path_matches(req.path_globs):
+            # tell Claude the filter is the problem, not the wording of the query
+            out["note"] = ("path_glob matched no indexed file. Patterns are gitignore-style "
+                           "and relative to the project root, e.g. src/**, **/*.py, *.cs.")
+        return out
 
     @app.post("/notify", dependencies=guarded)
     def notify(req: NotifyRequest) -> dict[str, object]:

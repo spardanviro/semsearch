@@ -40,6 +40,7 @@ CONTAINER_TYPES = frozenset({
 NAME_TYPES = ("identifier", "type_identifier", "property_identifier", "field_identifier",
               "name", "constant", "simple_identifier", "function_name")
 MIN_GAP_NON_BLANK = 3
+MAX_CONTAINER_DEPTH = 30
 GAP_KIND = "declarations"
 SMALL_CHUNK_TOKENS = 100
 # lines that carry no meaning on their own: imports, package/namespace lines, lone braces
@@ -131,7 +132,11 @@ class _Walk:
         qual = f"{parent}.{name}" if parent else name
         kind = _kind(node)
         chunk = self.ctx.build(self.lines, start, end, qual, kind)
-        if kind in CONTAINER_TYPES and chunk.tokens > self.ctx.target_tokens:
+        # each nesting level re-counts the tokens of everything inside it: past a sane depth a
+        # (hostile or generated) file would cost depth x size, so deeper classes are windowed
+        nested = qual.count(".")
+        if (kind in CONTAINER_TYPES and chunk.tokens > self.ctx.target_tokens
+                and nested < MAX_CONTAINER_DEPTH):
             self.containers.append((start, end, qual))
             stack.append((node, qual))
         elif chunk.tokens > self.ctx.max_tokens:

@@ -24,6 +24,7 @@ from semsearch.config import (
     SPECIAL_FILENAMES,
     Settings,
 )
+from semsearch.globs import safe_spec
 
 log = logging.getLogger(__name__)
 LIST_TIMEOUT_S = 120
@@ -78,14 +79,20 @@ class TooManyFiles(RuntimeError):
     pass
 
 
-_SENSITIVE = pathspec.PathSpec.from_lines("gitignore", SENSITIVE_PATTERNS)
+# matched against the lower-cased path: Windows file names are case-insensitive, so
+# `Credentials.json` and `credentials.json` are the same secret
+_SENSITIVE = pathspec.PathSpec.from_lines("gitignore", [p.lower() for p in SENSITIVE_PATTERNS])
+
+
+def is_sensitive(rel: str) -> bool:
+    return _SENSITIVE.match_file(rel.lower())
 
 
 def _load_ignore(root: Path) -> pathspec.PathSpec:
     custom = root / ".semsearchignore"
     lines = custom.read_text(encoding="utf-8", errors="replace").splitlines() \
         if custom.is_file() else []
-    return pathspec.PathSpec.from_lines("gitignore", lines)
+    return safe_spec(lines, str(custom))        # repository-controlled: untrusted
 
 
 def _is_link(st: os.stat_result) -> bool:
@@ -148,7 +155,7 @@ def _list_with_walk(root: Path) -> list[str]:
     gitignore = root / ".gitignore"
     lines = gitignore.read_text(encoding="utf-8", errors="replace").splitlines() \
         if gitignore.is_file() else []
-    spec = pathspec.PathSpec.from_lines("gitignore", lines)
+    spec = safe_spec(lines, str(gitignore))
     skip = excluded_dirs(root)
     out: list[str] = []
     for dirpath, dirnames, filenames in os.walk(root):
@@ -163,7 +170,9 @@ def _list_with_walk(root: Path) -> list[str]:
 
 
 def list_candidates(root: Path) -> list[str]:
-    for lister in (_list_with_rg, _list_with_git):
+    # git first in a repository: is_gitignored() asks git too, so full scans and hook updates
+    # agree (rg drops tracked-but-ignored files that git still lists, and they would flap)
+    for lister in (_list_with_git, _list_with_rg):
         files = lister(root)
         if files is not None:
             return files
@@ -181,7 +190,7 @@ def filter_and_stat(root: Path, rel_paths: Iterable[str], settings: Settings) ->
     for rel in rel_paths:
         kind = classify(rel, settings.media)
         # sensitive patterns are checked separately so a repo's ignore file cannot re-include them
-        if (kind is None or _in_excluded_dir(rel, skip) or _SENSITIVE.match_file(rel)
+        if (kind is None or _in_excluded_dir(rel, skip) or is_sensitive(rel)
                 or ignore.match_file(rel)):
             continue
         try:
@@ -209,7 +218,8 @@ def is_gitignored(root: Path, rel: str) -> bool:
     git = shutil.which("git")
     if git and (root / ".git").exists():
         try:
-            proc = subprocess.run([git, "-c", "core.fsmonitor=false", "check-ignore", "-q", rel],
+            proc = subprocess.run([git, "-c", "core.fsmonitor=false", "check-ignore", "-q", "--",
+                                   rel],
                                   cwd=root, capture_output=True, timeout=10,
                                   stdin=subprocess.DEVNULL, creationflags=NO_WINDOW)
             return proc.returncode == 0
@@ -218,8 +228,8 @@ def is_gitignored(root: Path, rel: str) -> bool:
     gitignore = root / ".gitignore"
     if not gitignore.is_file():
         return False
-    spec = pathspec.PathSpec.from_lines(
-        "gitignore", gitignore.read_text(encoding="utf-8", errors="replace").splitlines())
+    spec = safe_spec(gitignore.read_text(encoding="utf-8", errors="replace").splitlines(),
+                     str(gitignore))
     return spec.match_file(rel)
 
 
@@ -235,7 +245,14 @@ def read_text(path: Path, limit: int | None = None) -> str | None:
     """Decode a source file; None when it looks binary or grew beyond `limit` bytes."""
     with open(path, "rb") as fh:
         data = fh.read() if limit is None else fh.read(limit + 1)
-    if (limit is not None and len(data) > limit) or b"\0" in data[:8192]:
+    if limit is not None and len(data) > limit:
+        return None
+    if data[:2] in (b"\xff\xfe", b"\xfe\xff"):   # UTF-16 (PowerShell 5 Out-File, SSMS exports)
+        try:
+            return data.decode("utf-16")
+        except UnicodeDecodeError:
+            return None
+    if b"\0" in data[:8192]:
         return None
     for enc in ("utf-8-sig", "gb18030"):
         try:

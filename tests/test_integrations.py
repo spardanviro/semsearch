@@ -44,7 +44,7 @@ def test_hook_run_never_fails_on_bad_input_or_missing_daemon(tmp_path: Path) -> 
 def test_format_search_truncates_preview_and_shows_location() -> None:
     text = format_search("load config", SEARCH_DATA)
 
-    assert text.startswith('1 results for "load config" (index up to date: 4 files')
+    assert text.startswith('1 result for "load config" (index up to date: 4 files')
     assert "1. src/a.py:3-9  load  [function]  score 0.712" in text
     assert "line 7" in text and "line 8" not in text and "…" in text
 

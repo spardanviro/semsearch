@@ -21,10 +21,10 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 
 import numpy as np
-import pathspec
 
 from semsearch.config import DEFAULT_KEYWORD_WEIGHT, SEARCH_MODES
 from semsearch.embed.base import Embedder
+from semsearch.globs import path_filter
 from semsearch.index import keywords
 from semsearch.index.store import ChunkHit, Store
 from semsearch.index.vectors import VectorCache
@@ -67,10 +67,8 @@ class SearchResult:
 
 
 def path_filter_for(globs: list[str] | None) -> PathFilter | None:
-    if not globs:
-        return None
-    spec = pathspec.PathSpec.from_lines("gitignore", globs)
-    return spec.match_file
+    """gitignore-style filter; normalised (./, backslashes, braces) and ReDoS-safe."""
+    return path_filter(globs)
 
 
 def _overlaps(a: ChunkHit, b: SearchResult) -> bool:

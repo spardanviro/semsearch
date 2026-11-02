@@ -7,6 +7,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 MODEL_ID = "google/embeddinggemma-2"   # default model (SEMSEARCH_MODEL)
+# pinned Hugging Face commit of the default model: what the benchmarks ran on; a change of the
+# repo's default branch must not silently swap the weights (SEMSEARCH_MODEL_REVISION)
+MODEL_REVISION = "f9972ac22e696a105c482202646979e33e4b5a1e"
 EMBED_DIM = 768                        # its native vector size
 MIN_MAX_TOKENS = 64
 CHUNKER_VERSION = "4"   # 2: "\n"-only lines, no boilerplate gaps; 3: lead trim;
@@ -62,12 +65,18 @@ BUILD_EXCLUDE_DIRS = frozenset({
     "dist", "build", "target", "bin", "obj", "coverage",
     "library", "temp", "logs", "usersettings",          # Unity
 })
+# matched case-insensitively against project-relative paths, and enforced even when a
+# repository's ignore files try to re-include them
 SENSITIVE_PATTERNS = (
     ".env", ".env.*", "*.pem", "*.key", "*.p12", "*.pfx", "id_rsa*", "id_ed25519*", "id_ecdsa*",
     "*.keystore", "*.jks", "secrets.*", "*secret*.json", "*secret*.yaml", "*secret*.yml",
-    "credentials*", ".npmrc", ".pypirc", ".netrc", "_netrc", ".git-credentials", ".pgpass",
-    "*.tfvars", "*.tfstate", "*.tfstate.*", "kubeconfig", "*.kubeconfig", ".docker/config.json",
-    "appsettings.*.json", "*.token", "*.kdbx", "*.ovpn", "service-account*.json",
+    "*secret*.txt", "credentials*", "*credentials*.json", "*credentials*.yaml",
+    "*credentials*.yml", "passwords*", "*password*.txt", "token*.json", "auth.json",
+    ".npmrc", ".pypirc", ".netrc", "_netrc", ".git-credentials", ".pgpass",
+    "*.tfvars", "*.tfvars.json", "*.tfstate", "*.tfstate.*", "kubeconfig", "*.kubeconfig",
+    "**/.docker/config.json", "**/gh/hosts.yml", "appsettings.*.json", "local.settings.json",
+    "*adminsdk*.json", "service-account*.json", "serviceaccount*.json", "wp-config.php",
+    "*.token", "*.kdbx", "*.ovpn",
 )
 
 
@@ -134,6 +143,9 @@ class Settings:
     max_files: int = field(default_factory=lambda: _env_int("SEMSEARCH_MAX_FILES", 50_000))
     # --- embedding model (docs: README "Switching the model") ---------------------------------
     model: str = field(default_factory=lambda: os.environ.get("SEMSEARCH_MODEL", MODEL_ID))
+    # None = the pinned commit for the default model, the repo's default branch otherwise
+    model_revision: str | None = field(
+        default_factory=lambda: os.environ.get("SEMSEARCH_MODEL_REVISION") or None)
     embed_dim: int = field(                  # 0 = the model's own size; smaller = truncate
         default_factory=lambda: _env_int("SEMSEARCH_EMBED_DIM", 0))
     # model-card prompt name or literal prefix text; None (unset) = automatic per model
@@ -195,6 +207,12 @@ class Settings:
         if not 0 < self.target_tokens <= self.max_tokens:
             raise ValueError(f"need 0 < SEMSEARCH_CHUNK_TOKENS ({self.target_tokens}) <= "
                              f"SEMSEARCH_MAX_TOKENS ({self.max_tokens})")
+
+    @property
+    def revision(self) -> str | None:
+        if self.model_revision:
+            return self.model_revision
+        return MODEL_REVISION if self.model == MODEL_ID else None
 
     @property
     def projects_dir(self) -> Path:

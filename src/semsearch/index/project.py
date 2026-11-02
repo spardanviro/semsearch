@@ -15,6 +15,7 @@ from semsearch.config import (
     Settings,
 )
 from semsearch.embed.base import Embedder
+from semsearch.globs import path_filter
 from semsearch.index import scanner
 from semsearch.index.indexer import Indexer, UpdateStats, diff
 from semsearch.index.search import SearchResult, search
@@ -77,6 +78,7 @@ class Project:
                 "keywords_version": KEYWORDS_VERSION,
                 "model_id": self.embedder.model_id, "dim": str(self.embedder.dim),
                 "load_mode": self.embedder.load_mode, "root": str(self.root),
+                "model_revision": self.settings.revision or "latest",
                 # document vectors depend on these too (the query prompt does not)
                 "document_prompt": ("auto" if self.settings.document_prompt is None
                                     else self.settings.document_prompt),
@@ -203,6 +205,14 @@ class Project:
                          self.settings.per_file_results, self.settings.search_mode,
                          self.settings.keyword_weight)
         return self._drop_vanished(results)[:k], fresh
+
+    def any_path_matches(self, globs: list[str]) -> bool:
+        match = path_filter(globs)
+        if match is None:
+            return True
+        with self.db_lock:
+            paths = list(self.store.files())
+        return any(match(p) for p in paths)
 
     def _drop_vanished(self, results: list[SearchResult]) -> list[SearchResult]:
         """Files deleted outside Claude (no hook) inside the scan cooldown must not be returned."""
