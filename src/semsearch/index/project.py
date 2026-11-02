@@ -60,7 +60,11 @@ class Project:
         return {"schema_version": SCHEMA_VERSION, "chunker_version": CHUNKER_VERSION,
                 "keywords_version": KEYWORDS_VERSION,
                 "model_id": self.embedder.model_id, "dim": str(self.embedder.dim),
-                "load_mode": self.embedder.load_mode, "root": str(self.root)}
+                "load_mode": self.embedder.load_mode, "root": str(self.root),
+                # document vectors depend on these too (the query prompt does not)
+                "document_prompt": ("auto" if self.settings.document_prompt is None
+                                    else self.settings.document_prompt),
+                "chunk_tokens": f"{self.settings.target_tokens}/{self.settings.max_tokens}"}
 
     # --- job submission -------------------------------------------------------------------
     def _submit(self, **kinds: object) -> None:

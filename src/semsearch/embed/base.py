@@ -14,8 +14,10 @@ _WORD = re.compile(r"[A-Za-z][a-z0-9]*|[A-Z]+(?![a-z])|\d+|[一-鿿]")
 
 class Embedder(Protocol):
     model_id: str
-    dim: int
     load_mode: str
+
+    @property
+    def dim(self) -> int: ...     # read-only: a plain attribute or a lazy property both fit
 
     def count_tokens(self, text: str) -> int: ...
     def encode_queries(self, texts: list[str]) -> np.ndarray: ...

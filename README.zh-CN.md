@@ -98,6 +98,34 @@ semsearch daemon stop        # 释放显存；下次检索会自动重启
 | `SEMSEARCH_MAX_FILE_BYTES` | `1000000` | 超过这个大小的文件跳过 |
 | `SEMSEARCH_MAX_FILES` | `50000` | 每个项目最多索引的文件数 |
 | `SEMSEARCH_BATCH_TOKENS` | `16384` | 每批嵌入的 token 上限，显存不够时调小 |
+| `SEMSEARCH_MODEL` | `google/embeddinggemma-2` | 任意 sentence-transformers 模型名或本地路径 |
+| `SEMSEARCH_EMBED_DIM` | `0` | 向量维度；`0` 表示用模型自己的维度，设得更小会截断（适用于 Matryoshka 类模型） |
+| `SEMSEARCH_QUERY_PROMPT` | 自动 | 查询提示词：模型卡里的提示词名，或直接写前缀文本（`""` 表示不加） |
+| `SEMSEARCH_DOCUMENT_PROMPT` | 自动 | 文档提示词，规则同上，作用于被索引的代码块 |
+| `SEMSEARCH_CHUNK_TOKENS` | `600` | 代码块的目标大小（token） |
+| `SEMSEARCH_MAX_TOKENS` | `1024` | 单块的硬上限；超过模型自身上限时自动压到模型上限，并给出警告 |
+
+两个提示词变量都不设时，程序按以下顺序自动选择：
+- EmbeddingGemma：用它自带的 `SearchQuery` / `Document`；
+- 其他模型：如果它的 sentence-transformers 配置里定义了 `query` / `document`，就用这两个；
+- 以上都没有：不加提示词。
+| `SEMSEARCH_TRUST_REMOTE_CODE` | `false` | 是否允许运行模型仓库自带的 Python 代码 |
+
+后台服务只在启动时读取这些配置。改完要执行 `semsearch daemon stop`，下次检索时服务会按新配置重新启动。这些变量要设成**用户环境变量**，这样不管后台服务是由 Claude Code 还是命令行拉起的，都能读到。
+
+### 换模型
+sentence-transformers 能加载的嵌入模型，都可以直接换上，不用改代码。例如：
+```bash
+# Windows：setx SEMSEARCH_MODEL "Qwen/Qwen3-Embedding-0.6B"（设完要重开终端）
+export SEMSEARCH_MODEL="Qwen/Qwen3-Embedding-0.6B"   # 自带 query/document 提示词，自动生效
+semsearch daemon stop
+```
+- **提示词**：每个模型的查询和文档提示词都不一样，写错会明显拉低排序质量。如果模型的 sentence-transformers 配置里没有定义 `query` / `document`，就照模型卡手动设置 `SEMSEARCH_QUERY_PROMPT` / `SEMSEARCH_DOCUMENT_PROMPT`，例如 E5 系列用 `"query: "` 和 `"passage: "`。填了模型不认识的提示词名时，会按字面文本使用，后台服务日志里会有警告。
+- **上下文长度**：如果模型支持的上下文短于 1024 token，把 `SEMSEARCH_MAX_TOKENS` 和 `SEMSEARCH_CHUNK_TOKENS` 一起调小。不调的话会按模型自身上限截断，长代码块的末尾会丢失。
+- **自动重建**：模型名、向量维度、文档提示词和块大小都记录在索引里，任何一项改变都会自动重建索引。只改查询提示词不会触发重建。
+- **`SEMSEARCH_TRUST_REMOTE_CODE`**：有些模型需要打开它。打开后会运行从模型仓库下载的 Python 代码，只对信得过的发布者开启。
+- **先评测再换**：用评测集在你自己的代码上比较新旧模型。给每个模型单独指定索引目录，避免互相覆盖：`uv run python evals/run.py --home evals/.home-<模型名> ...`。
+- **其他后端**：想接 Ollama 或在线 API，在 `src/semsearch/embed/base.py` 里实现 `Embedder` 接口，再在 `make_embedder` 里注册（对应 `SEMSEARCH_EMBEDDER`）。用在线 API 时，代码会被发送到你的电脑之外。
 
 ## 原理
 ```

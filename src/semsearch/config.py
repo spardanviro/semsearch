@@ -6,8 +6,9 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
-MODEL_ID = "google/embeddinggemma-2"
-EMBED_DIM = 768
+MODEL_ID = "google/embeddinggemma-2"   # default model (SEMSEARCH_MODEL)
+EMBED_DIM = 768                        # its native vector size
+MIN_MAX_TOKENS = 64
 CHUNKER_VERSION = "4"   # 2: "\n"-only lines, no boilerplate gaps; 3: lead trim;
                         # 4: doc comments join their definition, PowerShell functions
 SCHEMA_VERSION = "3"    # 2: AUTOINCREMENT chunk ids; 3: chunks_fts keyword index
@@ -78,6 +79,18 @@ def _env_float(name: str, default: float) -> float:
         raise ValueError(f"{name} must be a number, got {raw!r}") from exc
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    value = raw.strip().lower()
+    if value in ("1", "true", "yes", "on"):
+        return True
+    if value in ("0", "false", "no", "off", ""):
+        return False
+    raise ValueError(f"{name} must be true/false, got {raw!r}")
+
+
 def default_home() -> Path:
     return Path(os.environ.get("SEMSEARCH_HOME", Path.home() / ".cache" / "semsearch"))
 
@@ -92,8 +105,21 @@ class Settings:
         default_factory=lambda: _env_int("SEMSEARCH_MAX_FILE_BYTES", 1_000_000))
     max_config_bytes: int = 200_000          # json/yaml/xml larger than this are usually data
     max_files: int = field(default_factory=lambda: _env_int("SEMSEARCH_MAX_FILES", 50_000))
-    target_tokens: int = 600                 # preferred chunk size
-    max_tokens: int = 1024                   # hard limit (model max_seq_length)
+    # --- embedding model (docs: README "Switching the model") ---------------------------------
+    model: str = field(default_factory=lambda: os.environ.get("SEMSEARCH_MODEL", MODEL_ID))
+    embed_dim: int = field(                  # 0 = the model's own size; smaller = truncate
+        default_factory=lambda: _env_int("SEMSEARCH_EMBED_DIM", 0))
+    # model-card prompt name or literal prefix text; None (unset) = automatic per model
+    query_prompt: str | None = field(
+        default_factory=lambda: os.environ.get("SEMSEARCH_QUERY_PROMPT"))
+    document_prompt: str | None = field(
+        default_factory=lambda: os.environ.get("SEMSEARCH_DOCUMENT_PROMPT"))
+    trust_remote_code: bool = field(         # lets the model repo run its own Python code
+        default_factory=lambda: _env_bool("SEMSEARCH_TRUST_REMOTE_CODE", False))
+    target_tokens: int = field(              # preferred chunk size
+        default_factory=lambda: _env_int("SEMSEARCH_CHUNK_TOKENS", 600))
+    max_tokens: int = field(                 # hard limit = the model's max_seq_length
+        default_factory=lambda: _env_int("SEMSEARCH_MAX_TOKENS", 1024))
     window_lines: int = 60
     window_overlap: int = 15
     batch_token_budget: int = field(
@@ -115,6 +141,20 @@ class Settings:
         if not (math.isfinite(self.keyword_weight) and self.keyword_weight >= 0):
             raise ValueError(f"SEMSEARCH_KEYWORD_WEIGHT must be a finite number >= 0, "
                              f"got {self.keyword_weight!r}")
+        if not self.model.strip():
+            raise ValueError("SEMSEARCH_MODEL must not be empty")
+        if self.embed_dim < 0:
+            raise ValueError(f"SEMSEARCH_EMBED_DIM must be >= 0, got {self.embed_dim}")
+        # checked here, before any index meta is compared: a bad value must not wipe an index
+        if self.model == MODEL_ID and self.embed_dim > EMBED_DIM:
+            raise ValueError(f"SEMSEARCH_EMBED_DIM={self.embed_dim} exceeds {MODEL_ID}'s "
+                             f"vector size {EMBED_DIM}")
+        if self.max_tokens < MIN_MAX_TOKENS:
+            raise ValueError(f"SEMSEARCH_MAX_TOKENS must be >= {MIN_MAX_TOKENS}, "
+                             f"got {self.max_tokens}")
+        if not 0 < self.target_tokens <= self.max_tokens:
+            raise ValueError(f"need 0 < SEMSEARCH_CHUNK_TOKENS ({self.target_tokens}) <= "
+                             f"SEMSEARCH_MAX_TOKENS ({self.max_tokens})")
 
     @property
     def projects_dir(self) -> Path:

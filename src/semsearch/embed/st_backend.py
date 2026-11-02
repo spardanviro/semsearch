@@ -1,4 +1,8 @@
-"""EmbeddingGemma 2 through sentence-transformers (text-only encoders for now)."""
+"""Embedding models loaded through sentence-transformers (default: EmbeddingGemma 2, text only).
+
+The model, vector size, prompts and token limits come from Settings (SEMSEARCH_MODEL, ...), so
+any sentence-transformers model can be used without code changes.
+"""
 from __future__ import annotations
 
 import logging
@@ -12,28 +16,35 @@ from semsearch.config import EMBED_DIM, MODEL_ID, Settings
 from semsearch.embed.base import normalize
 
 log = logging.getLogger(__name__)
-QUERY_PROMPT = "SearchQuery"      # PHASE0 + PHASE1_5: beats CodeRetrieval / QuestionAnswering
-DOCUMENT_PROMPT = "Document"
-PROMPT_OVERHEAD_TOKENS = 12       # "title: none | text: " + special tokens
+PROMPT_SPECIAL_TOKENS = 4         # BOS/EOS etc. added around prompt + text
+# EmbeddingGemma prompt names (PHASE0 + PHASE1_5: SearchQuery beats CodeRetrieval / QA)
+GEMMA_PROMPTS = {"query": "SearchQuery", "document": "Document"}
+
+
+def is_embeddinggemma(model: str) -> bool:
+    return "embeddinggemma" in model.lower()
 
 
 class SentenceTransformerEmbedder:
-    model_id = MODEL_ID
-    dim = EMBED_DIM
-    load_mode = "text"            # PHASE0: text-only and full loading differ slightly -> never mix
-
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
+        self.model_id = settings.model
+        # PHASE0: EmbeddingGemma text-only and full loading differ slightly -> recorded, never mixed
+        self.load_mode = "text" if is_embeddinggemma(settings.model) else "default"
         self._lock = threading.Lock()       # GPU work
         self._tok_lock = threading.Lock()   # HF fast tokenizers are not safe across threads
         self._model: Any = None
         self._tokenizer: Any = None
+        self._prompts: tuple[str, str] | None = None   # (query, document) prefix text
+        self._dim: int | None = settings.embed_dim or (EMBED_DIM if settings.model == MODEL_ID
+                                                       else None)
 
     # --- lazy loading ---------------------------------------------------------------------
     def _tok(self) -> Any:
         if self._tokenizer is None:
             from transformers import AutoTokenizer
-            self._tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
+            self._tokenizer = AutoTokenizer.from_pretrained(
+                self.model_id, trust_remote_code=self.settings.trust_remote_code)
         return self._tokenizer
 
     def _load(self) -> Any:
@@ -42,15 +53,75 @@ class SentenceTransformerEmbedder:
             from sentence_transformers import SentenceTransformer
             device = "cuda" if torch.cuda.is_available() else "cpu"
             dtype = torch.bfloat16 if device == "cuda" else torch.float32
+            extra: dict[str, Any] = {}
+            if self.load_mode == "text":   # skip EmbeddingGemma's vision/audio encoders
+                extra["config_kwargs"] = {"vision_config": None, "audio_config": None}
             t0 = time.perf_counter()
-            self._model = SentenceTransformer(
-                MODEL_ID, device=device, model_kwargs={"dtype": dtype},
-                config_kwargs={"vision_config": None, "audio_config": None})
-            self._model.max_seq_length = self.settings.max_tokens
-            log.info("loaded %s on %s in %.1fs", MODEL_ID, device, time.perf_counter() - t0)
+            model = SentenceTransformer(
+                self.model_id, device=device, model_kwargs={"dtype": dtype},
+                trust_remote_code=self.settings.trust_remote_code, **extra)
+            model.max_seq_length = self._seq_length(model)
+            self._check_dim(model)
+            self._prompts = (self._resolve(model, self.settings.query_prompt, "query"),
+                             self._resolve(model, self.settings.document_prompt, "document"))
+            self._model = model
+            log.info("loaded %s on %s in %.1fs (dim %d)", self.model_id, device,
+                     time.perf_counter() - t0, self.dim)
         return self._model
 
+    def _check_dim(self, model: Any) -> None:
+        native = int(model.get_sentence_embedding_dimension())
+        if self._dim is None:
+            self._dim = native
+        elif self._dim > native:
+            raise ValueError(f"SEMSEARCH_EMBED_DIM={self._dim} exceeds {self.model_id}'s "
+                             f"vector size {native}")
+
+    def _seq_length(self, model: Any) -> int:
+        """Never exceed the model's own limit: longer inputs can crash its position embeddings."""
+        native = getattr(model, "max_seq_length", None)
+        want = self.settings.max_tokens
+        if isinstance(native, int) and 0 < native < want:
+            log.warning("%s handles at most %d tokens; SEMSEARCH_MAX_TOKENS=%d is capped (lower "
+                        "it and SEMSEARCH_CHUNK_TOKENS so chunks are not cut)", self.model_id,
+                        native, want)
+            return native
+        return want
+
+    def _resolve(self, model: Any, prompt: str | None, role: str) -> str:
+        """Prompt prefix text for `role` ("query" / "document").
+
+        Unset: EmbeddingGemma's named prompts, otherwise the model card's own `query` /
+        `document` prompt if it has one, otherwise none. Set: a prompt name from the model
+        card, or literal prefix text."""
+        prompts: dict[str, str] = getattr(model, "prompts", None) or {}
+        if prompt is None:
+            if self.load_mode == "text":
+                return prompts.get(GEMMA_PROMPTS[role], "")
+            return prompts.get(role, "")
+        if prompt in prompts:
+            return prompts[prompt]
+        if prompts and prompt.isidentifier():
+            log.warning("%r is not a prompt name of %s (has: %s); using it as literal text",
+                        prompt, self.model_id, ", ".join(sorted(prompts)))
+        return prompt
+
+    def _prompt(self, index: int) -> str:
+        if self._prompts is None:
+            raise RuntimeError("embedding model not loaded")
+        return self._prompts[index]
+
     # --- api ------------------------------------------------------------------------------
+    @property
+    def dim(self) -> int:
+        """Vector size. Unknown sizes need the model, so this may load it (other models only)."""
+        if self._dim is None:
+            with self._lock:
+                self._load()
+        if self._dim is None:
+            raise RuntimeError(f"could not determine the vector size of {self.model_id}")
+        return self._dim
+
     def count_tokens(self, text: str) -> int:
         with self._tok_lock:
             return len(self._tok()(text, add_special_tokens=False)["input_ids"])
@@ -58,20 +129,26 @@ class SentenceTransformerEmbedder:
     def encode_queries(self, texts: list[str]) -> np.ndarray:
         with self._lock:
             model = self._load()
-            out = model.encode(texts, prompt_name=QUERY_PROMPT, convert_to_numpy=True,
+            out = model.encode(texts, prompt=self._prompt(0), convert_to_numpy=True,
                                normalize_embeddings=False)
-        return normalize(out)
+        return self._finish(out)
 
     def encode_documents(self, texts: list[str]) -> np.ndarray:
         if not texts:
             return np.zeros((0, self.dim), dtype=np.float32)
-        lengths = [min(self.count_tokens(t), self.settings.max_tokens) + PROMPT_OVERHEAD_TOKENS
-                   for t in texts]
+        with self._lock:
+            self._load()
+        overhead = self.count_tokens(self._prompt(1)) + PROMPT_SPECIAL_TOKENS
+        lengths = [min(self.count_tokens(t), self.settings.max_tokens) + overhead for t in texts]
         order = sorted(range(len(texts)), key=lambda i: lengths[i])
         result = np.zeros((len(texts), self.dim), dtype=np.float32)
         for batch in self._batches(order, lengths):
             result[batch] = self._encode_batch([texts[i] for i in batch])
         return result
+
+    def _finish(self, out: np.ndarray) -> np.ndarray:
+        """float32, truncated to `dim` (Matryoshka-style models), L2-normalized."""
+        return normalize(np.asarray(out, dtype=np.float32)[:, :self.dim])
 
     def _batches(self, order: list[int], lengths: list[int]) -> list[list[int]]:
         """Group indices (sorted by length) so batch_size * longest <= token budget."""
@@ -92,7 +169,7 @@ class SentenceTransformerEmbedder:
         with self._lock:
             model = self._load()
             try:
-                out = model.encode(texts, prompt_name=DOCUMENT_PROMPT, batch_size=len(texts),
+                out = model.encode(texts, prompt=self._prompt(1), batch_size=len(texts),
                                    convert_to_numpy=True, normalize_embeddings=False)
             except torch.OutOfMemoryError:
                 if len(texts) == 1:
@@ -104,4 +181,4 @@ class SentenceTransformerEmbedder:
             half = len(texts) // 2
             return np.concatenate([self._encode_batch(texts[:half]),
                                    self._encode_batch(texts[half:])])
-        return normalize(out)
+        return self._finish(out)

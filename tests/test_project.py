@@ -193,6 +193,37 @@ def test_project_model_change_wipes_and_rebuilds(root: Path, settings: Settings)
         proj.close()
 
 
+@pytest.mark.parametrize("change", [{"document_prompt": "passage: "},
+                                    {"target_tokens": 300, "max_tokens": 512}])
+def test_project_document_prompt_or_chunk_size_change_rebuilds(
+        root: Path, settings: Settings, change: dict[str, object]) -> None:
+    first = Project(root, settings, FakeEmbedder())
+    assert first.wait_idle(10)
+    first.close()
+
+    embedder = FakeEmbedder()
+    proj = Project(root, replace(settings, **change), embedder)  # type: ignore[arg-type]
+    try:
+        assert proj.wait_idle(10)
+        assert embedder.documents_encoded == 3
+    finally:
+        proj.close()
+
+
+def test_project_query_prompt_change_keeps_index(root: Path, settings: Settings) -> None:
+    first = Project(root, settings, FakeEmbedder())
+    assert first.wait_idle(10)
+    first.close()
+
+    embedder = FakeEmbedder()
+    proj = Project(root, replace(settings, query_prompt="query: "), embedder)
+    try:
+        assert proj.wait_idle(10)
+        assert embedder.documents_encoded == 0
+    finally:
+        proj.close()
+
+
 def test_project_full_reindex_reembeds_everything(project: Project, embedder: FakeEmbedder) -> None:
     before = embedder.documents_encoded
 

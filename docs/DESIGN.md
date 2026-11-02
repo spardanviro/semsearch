@@ -404,6 +404,7 @@ SearchEngine/
 - [x] FTS5 关键词索引 + 混合检索（只对含标识符的查询加 BM25 分；RRF 评测更差，未采用）
 - [x] 中文查询：先翻译成英文再查（盲译测试中，中文类 MRR 0.58 → 0.70），写进工具说明、subagent 与路由规则；查询含中日韩文字时，结果末尾提示改用英文。换提示词、放宽每文件条数都没有明显效果
 - [x] 真实项目评测（6 个私人项目 72 题，见 `docs/EVAL_REAL_PROJECTS.md`）：分块器 v4 让紧贴在定义前的注释并入该定义的块，并识别 PowerShell 函数；MRR 从 0.65 升到 0.81
+- [x] 嵌入模型可配置：用 `SEMSEARCH_MODEL / EMBED_DIM / QUERY_PROMPT / DOCUMENT_PROMPT / CHUNK_TOKENS / MAX_TOKENS / TRUST_REMOTE_CODE` 切换任意 sentence-transformers 模型。提示词默认自动选择：EmbeddingGemma 用 SearchQuery/Document，其他模型用其配置里的 query/document，都没有就不加。`max_tokens` 不超过模型自身的上限。维度超出时，在比对索引元数据之前就报错，避免误清空索引。索引元数据新增 `document_prompt` 和 `chunk_tokens` 两项，变化时自动重建；只改查询提示词不重建
 - [ ] 调块大小、块头格式、每文件结果数（用评测集验证）
 
 **结果**：MRR 0.698 → 0.690（基本持平），R@5 0.796 → 0.815。关键词索引约占 8% 空间，查询约 1 ms。
