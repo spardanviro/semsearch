@@ -12,10 +12,12 @@ MODEL_ID = "google/embeddinggemma-2"   # default model (SEMSEARCH_MODEL)
 MODEL_REVISION = "f9972ac22e696a105c482202646979e33e4b5a1e"
 EMBED_DIM = 768                        # its native vector size
 MIN_MAX_TOKENS = 64
-CHUNKER_VERSION = "4"   # 2: "\n"-only lines, no boilerplate gaps; 3: lead trim;
-                        # 4: doc comments join their definition, PowerShell functions
+CHUNKER_VERSION = "5"   # 2: "\n"-only lines, no boilerplate gaps; 3: lead trim;
+                        # 4: doc comments join their definition, PowerShell functions;
+                        # 5: long lines split, short text gaps kept, JS arrow functions,
+                        #    Go/Rust names, Rust attributes, minified files skipped
 SCHEMA_VERSION = "3"    # 2: AUTOINCREMENT chunk ids; 3: chunks_fts keyword index
-KEYWORDS_VERSION = "1"  # bump when keywords.terms() changes: the FTS index is rebuilt
+KEYWORDS_VERSION = "2"  # bump when keywords.terms() changes: the FTS index is rebuilt
 SEARCH_MODES = ("hybrid", "vector", "keyword")
 DEFAULT_KEYWORD_WEIGHT = 0.05   # max BM25 bonus added to cosine (tuned on evals/, docs/PHASE1_5.md)
 
@@ -128,7 +130,8 @@ def _env_media(name: str) -> frozenset[str]:
 
 
 def default_home() -> Path:
-    return Path(os.environ.get("SEMSEARCH_HOME", Path.home() / ".cache" / "semsearch"))
+    raw = os.environ.get("SEMSEARCH_HOME", "").strip()   # "" would mean the cwd
+    return Path(raw).expanduser() if raw else Path.home() / ".cache" / "semsearch"
 
 
 @dataclass(frozen=True)
@@ -187,8 +190,15 @@ class Settings:
         if not (math.isfinite(self.keyword_weight) and self.keyword_weight >= 0):
             raise ValueError(f"SEMSEARCH_KEYWORD_WEIGHT must be a finite number >= 0, "
                              f"got {self.keyword_weight!r}")
-        if not self.model.strip():
-            raise ValueError("SEMSEARCH_MODEL must not be empty")
+        if not self.model.strip() or self.model != self.model.strip():
+            raise ValueError(f"SEMSEARCH_MODEL must be a non-empty name, got {self.model!r}")
+        positive = {"SEMSEARCH_MAX_FILES": self.max_files,
+                    "SEMSEARCH_MAX_FILE_BYTES": self.max_file_bytes,
+                    "SEMSEARCH_BATCH_TOKENS": self.batch_token_budget,
+                    "SEMSEARCH_IDLE_TIMEOUT": self.idle_timeout_s}
+        for name, value in positive.items():
+            if not (math.isfinite(value) and value > 0):
+                raise ValueError(f"{name} must be a positive number, got {value!r}")
         if self.embed_dim < 0:
             raise ValueError(f"SEMSEARCH_EMBED_DIM must be >= 0, got {self.embed_dim}")
         # checked here, before any index meta is compared: a bad value must not wipe an index

@@ -17,6 +17,7 @@ from semsearch.embed.base import normalize
 
 log = logging.getLogger(__name__)
 PROMPT_SPECIAL_TOKENS = 4         # BOS/EOS etc. added around prompt + text
+PROMPT_MARGIN_TOKENS = 32         # sequence-length headroom for prompt + special tokens
 # EmbeddingGemma prompt names (PHASE0 + PHASE1_5: SearchQuery beats CodeRetrieval / QA)
 GEMMA_PROMPTS = {"query": "SearchQuery", "document": "Document"}
 
@@ -111,11 +112,14 @@ class SentenceTransformerEmbedder:
             # longer than a text chunk; truncating them breaks the image/audio token layout.
             # Text chunks stay within max_tokens anyway (the chunker enforces it).
             return native
-        want = self.settings.max_tokens
+        # chunk token counts exclude the document prompt and special tokens: leave room so a
+        # chunk right at max_tokens is not cut by a few tokens
+        want = self.settings.max_tokens + PROMPT_MARGIN_TOKENS
         if isinstance(native, int) and 0 < native < want:
-            log.warning("%s handles at most %d tokens; SEMSEARCH_MAX_TOKENS=%d is capped (lower "
-                        "it and SEMSEARCH_CHUNK_TOKENS so chunks are not cut)", self.model_id,
-                        native, want)
+            if native < self.settings.max_tokens:
+                log.warning("%s handles at most %d tokens; SEMSEARCH_MAX_TOKENS=%d is capped "
+                            "(lower it and SEMSEARCH_CHUNK_TOKENS so chunks are not cut)",
+                            self.model_id, native, self.settings.max_tokens)
             return native
         return want
 

@@ -182,10 +182,15 @@ def _audio_input(samples: np.ndarray) -> dict[str, Any]:
 
 
 def _load_image(path: Path) -> Any:
-    from PIL import Image
+    from PIL import Image, ImageOps
     with Image.open(path, formats=IMAGE_FORMATS) as img:
         img.seek(0)                                    # first frame of a GIF
         img.draft("RGB", (IMAGE_MAX_SIDE, IMAGE_MAX_SIDE))   # JPEG: decode already downscaled
+        img = ImageOps.exif_transpose(img) or img      # phone photos: apply the EXIF rotation
+        if img.mode.startswith("I"):                   # 16/32-bit grey would clip to white
+            arr = np.asarray(img, dtype=np.float64)
+            span = float(arr.max() - arr.min()) or 1.0
+            img = Image.fromarray(((arr - arr.min()) * (255.0 / span)).astype(np.uint8), "L")
         if img.mode in ("P", "LA") or "transparency" in img.info:
             img = img.convert("RGBA")                  # palette transparency -> alpha first
         rgb = img.convert("RGB")

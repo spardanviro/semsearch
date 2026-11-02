@@ -51,7 +51,9 @@ class ChunkContext:
 
     def build(self, lines: list[str], start: int, end: int, symbol: str, kind: str) -> Chunk:
         """Chunk from 1-based inclusive line range of `lines`."""
-        body = "\n".join(lines[start - 1:end])
+        return self.build_body("\n".join(lines[start - 1:end]), start, end, symbol, kind)
+
+    def build_body(self, body: str, start: int, end: int, symbol: str, kind: str) -> Chunk:
         text = make_header(self.path, symbol, kind, self.lang) + body
         return Chunk(start, end, symbol, kind, text, make_preview(body, self.preview_chars),
                      self.count_tokens(text))

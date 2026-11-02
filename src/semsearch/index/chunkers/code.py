@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 import re
 import threading
+import time
 from dataclasses import dataclass, field
 
 from tree_sitter import Node, Parser
@@ -39,8 +40,14 @@ CONTAINER_TYPES = frozenset({
 })
 NAME_TYPES = ("identifier", "type_identifier", "property_identifier", "field_identifier",
               "name", "constant", "simple_identifier", "function_name")
+VAR_DECL_TYPES = frozenset({"lexical_declaration", "variable_declaration"})   # JS / TS
+FUNCTION_VALUES = frozenset({"arrow_function", "function_expression", "function",
+                             "generator_function"})
+ATTRIBUTE_TYPES = frozenset({"attribute_item", "inner_attribute_item"})       # Rust
 MIN_GAP_NON_BLANK = 3
+MIN_GAP_CHARS = 80
 MAX_CONTAINER_DEPTH = 30
+PARSER_RETRY_S = 300.0
 GAP_KIND = "declarations"
 SMALL_CHUNK_TOKENS = 100
 # lines that carry no meaning on their own: imports, package/namespace lines, lone braces
@@ -51,22 +58,68 @@ _local = threading.local()   # tree-sitter parsers are not thread-safe: one set 
 
 
 def _parser(lang: str) -> Parser | None:
-    parsers: dict[str, Parser | None] = getattr(_local, "parsers", None) or {}
+    """Per-thread parser cache. A failure is retried after PARSER_RETRY_S: grammars are
+    downloaded on first use, so an offline moment must not mean "windows forever"."""
+    parsers: dict[str, tuple[Parser | None, float]] = getattr(_local, "parsers", None) or {}
     _local.parsers = parsers
-    if lang not in parsers:
-        try:
-            parsers[lang] = get_parser(lang)  # type: ignore[arg-type]
-        except Exception as exc:  # unknown or broken grammar -> caller falls back to windows
-            log.info("no tree-sitter parser for %s: %s", lang, exc)
-            parsers[lang] = None
-    return parsers[lang]
+    cached = parsers.get(lang)
+    if cached is not None and (cached[0] is not None
+                               or time.monotonic() - cached[1] < PARSER_RETRY_S):
+        return cached[0]
+    try:
+        parsers[lang] = (get_parser(lang), time.monotonic())  # type: ignore[arg-type]
+    except Exception as exc:  # unknown, offline or broken grammar -> caller uses windows
+        log.warning("no tree-sitter parser for %s (line windows instead): %s", lang, exc)
+        parsers[lang] = (None, time.monotonic())
+    return parsers[lang][0]
 
 
 def _meaningful(lines: list[str], start: int, end: int) -> int:
     return sum(1 for ln in lines[start - 1:end] if ln.strip() and not _BOILERPLATE.match(ln))
 
 
+def _meaningful_chars(lines: list[str], start: int, end: int) -> int:
+    return sum(len(ln.strip()) for ln in lines[start - 1:end]
+               if ln.strip() and not _BOILERPLATE.match(ln))
+
+
+def _function_declarator(node: Node) -> Node | None:
+    """`const f = () => {}` / `var f = function () {}`: the declarator holding the name."""
+    if node.type not in VAR_DECL_TYPES:
+        return None
+    for decl in node.named_children:
+        value = decl.child_by_field_name("value") if decl.type == "variable_declarator" else None
+        if value is not None and value.type in FUNCTION_VALUES:
+            return decl
+    return None
+
+
+def _text(node: Node | None) -> str | None:
+    return node.text.decode("utf-8", "replace") if node is not None and node.text else None
+
+
+def _special_name(node: Node) -> str | None:
+    if node.type == "type_declaration":               # Go: the name sits in a type_spec
+        for spec in node.named_children:
+            name = _text(spec.child_by_field_name("name"))
+            if name:
+                return name
+    if node.type == "impl_item":                      # Rust: impl<T> Display for S<T>
+        typ = node.child_by_field_name("type")
+        if typ is not None:
+            ident = typ if typ.type == "type_identifier" else next(
+                (c for c in typ.named_children if c.type == "type_identifier"), typ)
+            return _text(ident)
+    decl = _function_declarator(node)
+    if decl is not None:
+        return _text(decl.child_by_field_name("name"))
+    return None
+
+
 def _node_name(node: Node) -> str:
+    special = _special_name(node)
+    if special:
+        return special
     target = node.child_by_field_name("definition") or node  # python decorated_definition
     named = target.child_by_field_name("name")
     if named is None:
@@ -84,6 +137,8 @@ def _node_name(node: Node) -> str:
 
 
 def _kind(node: Node) -> str:
+    if _function_declarator(node) is not None:
+        return "function"
     inner = node.child_by_field_name("definition")
     return (inner or node).type
 
@@ -106,11 +161,12 @@ def _leading_comment_row(node: Node, lines: list[str]) -> int:
            and anchor.parent.start_point[0] == start and anchor.parent.parent is not None):
         anchor = anchor.parent
     sibling = anchor.prev_named_sibling
-    while sibling is not None and "comment" in sibling.type and _last_row(sibling) == start - 1:
+    while (sibling is not None and ("comment" in sibling.type or sibling.type in ATTRIBUTE_TYPES)
+           and _last_row(sibling) == start - 1):
         row, col = sibling.start_point          # col is a byte offset
         if row >= len(lines) or lines[row].encode("utf-8")[:col].strip():
             break
-        start = row
+        start = row              # Rust `#[derive]` between `///` and the item belongs to it
         sibling = sibling.prev_named_sibling
     return start
 
@@ -152,7 +208,7 @@ class _Walk:
             node, parent = stack.pop()
             for child in node.named_children:
                 kind = _kind(child)
-                if kind in LEAF_TYPES or kind in CONTAINER_TYPES:
+                if kind in LEAF_TYPES or kind in CONTAINER_TYPES or kind == "function":
                     self.emit_def(child, parent, stack)
                 elif child.named_child_count:
                     stack.append((child, parent))
@@ -172,8 +228,11 @@ def _gap_chunks(walk: _Walk, total: int) -> list[tuple[Chunk, str]]:
         while line <= total and not covered[line]:
             line += 1
         end = line - 1
-        # import/using blocks rank high on file-name similarity but carry no information
-        if _meaningful(walk.lines, start, end) < MIN_GAP_NON_BLANK:
+        # import/using blocks rank high on file-name similarity but carry no information; a
+        # short gap still counts when it holds real text (module docstring, documented
+        # constants, a long data line)
+        if (_meaningful(walk.lines, start, end) < MIN_GAP_NON_BLANK
+                and _meaningful_chars(walk.lines, start, end) < MIN_GAP_CHARS):
             continue
         # trim leading imports/braces and blank edges: ownership becomes exact and the
         # preview starts with the meaningful part instead of a wall of `using` lines

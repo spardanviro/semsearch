@@ -11,7 +11,8 @@ from __future__ import annotations
 
 import re
 
-_WORD = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+# a word must not start inside a digit run: "3rd" / "10px" are not the words "rd" / "px"
+_WORD = re.compile(r"(?<![A-Za-z0-9_])[A-Za-z_][A-Za-z0-9_]*")
 _CAMEL = re.compile(r"[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|[0-9]+")
 # identifier-shaped: camelCase / PascalCase, snake_case, ALL_CAPS or letter+digit names
 _IDENTIFIER = re.compile(

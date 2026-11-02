@@ -34,6 +34,7 @@ CANDIDATE_FACTOR = 6
 FILTERED_OVERFETCH = 4    # keyword hits are filtered after ranking: fetch more when filtering
 MAX_KEYWORD_SCAN = 20_000  # upper bound on BM25 rows read for one filtered query
 MAX_K = 50
+MAX_POOL = 5000           # widest candidate pool when duplicates crowd the results
 FTS_WEIGHTS = (2.0, 1.0)  # bm25 column weights: (path + symbol, body)
 PathFilter = Callable[[str], bool]
 
@@ -147,12 +148,19 @@ def search(store: Store, cache: VectorCache, embedder: Embedder, db_lock: thread
         raise ValueError(f"mode must be one of {SEARCH_MODES}, got {mode!r}")
     k = max(1, min(k, MAX_K))
     [qvec] = embedder.encode_queries([query])
-    ranked, cosine = _ranked_candidates(store, cache, db_lock, query, qvec, k * CANDIDATE_FACTOR,
-                                        path_filter_for(path_globs), modality, mode,
-                                        keyword_weight)
-    with db_lock:
-        meta = store.get_chunks(ranked)
-    return _collect(ranked, cosine, meta, k, min_score, per_file)
+    match = path_filter_for(path_globs)
+    pool = k * CANDIDATE_FACTOR
+    while True:
+        ranked, cosine = _ranked_candidates(store, cache, db_lock, query, qvec, pool, match,
+                                            modality, mode, keyword_weight)
+        with db_lock:
+            meta = store.get_chunks(ranked)
+        results = _collect(ranked, cosine, meta, k, min_score, per_file)
+        # many identical copies (vendored trees) or one huge file can use up the whole pool:
+        # widen it while results are missing and the pool was actually full
+        if len(results) >= k or len(ranked) < pool or pool >= MAX_POOL:
+            return results
+        pool = min(pool * 4, MAX_POOL)
 
 
 def _collect(ranked: list[int], cosine: dict[int, float], meta: dict[int, ChunkHit], k: int,
