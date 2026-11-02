@@ -25,7 +25,8 @@ Read the lines you need before relying on them. When media indexing is enabled, 
 also be images (open them with Read), PDF pages ("file.pdf p.N": Read with pages=N) and
 audio/video segments ("file 01:20-01:40": a time range; they cannot be opened with Read).
 Write the query in English even when the user asked in another language: code is English and
-translated queries find it much more reliably (benchmark: Chinese questions MRR 0.58 -> 0.70)."""
+translated queries find it more reliably (in this project's benchmarks, translating Chinese
+questions to English raised MRR from 0.77 to 0.80)."""
 
 SEARCH_DESCRIPTION = """Find code/docs by meaning in the current project. Returns ranked
 file:line ranges with symbol names and short previews. Best for intent-level questions where

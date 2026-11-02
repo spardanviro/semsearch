@@ -2,27 +2,36 @@
 name = "semsearch"
 version = "0.1.0"
 description = "Local semantic code search for Claude Code, powered by EmbeddingGemma 2"
+readme = "README.md"
+# 3.12 only: the CUDA 13 torch wheels and tree-sitter-language-pack were verified on it
 requires-python = ">=3.12,<3.13"
 license = "MIT"
 license-files = ["LICENSE"]
+authors = [{ name = "Nero" }]
 dependencies = [
     "torch>=2.14",
-    "torchvision",
+    "torchvision",              # not imported, but EmbeddingGemma's image processor needs it
     "pillow",
     "sentence-transformers>=6.1",
     "transformers",
     "numpy",
+    "tree-sitter",
     "tree-sitter-language-pack",
     "blake3",
-    "pathspec",
+    "pathspec>=1.1",            # backend selection (RE2) used by semsearch.globs
+    "google-re2>=1.1.20251105", # linear-time matching of untrusted ignore patterns
     "fastapi",
+    "pydantic>=2",
     "uvicorn",
     "httpx",
-    "mcp",
+    "anyio",
+    "mcp>=2,<3",                # mcp.server.mcpserver.MCPServer (2.x API)
     "pypdfium2>=5.14.0",
     "av>=19.0.2",
-    "google-re2>=1.1.20251105",
 ]
+
+[project.urls]
+Homepage = "https://github.com/spardanviro/SearchEngine"
 
 [project.scripts]
 semsearch = "semsearch.cli:main"
@@ -38,14 +47,15 @@ build-backend = "hatchling.build"
 packages = ["src/semsearch"]
 
 [dependency-groups]
-dev = ["pytest", "pytest-cov", "ruff", "mypy", "sqlite-vec"]  # sqlite-vec: only for spikes/phase0_infra.py
+dev = ["pytest", "pytest-cov", "ruff", "pyright", "sqlite-vec"]  # sqlite-vec: only for spikes/phase0_infra.py
 
 [tool.uv]
 package = true
 
+# CUDA 13 builds (NVIDIA driver >= 580) on Windows/Linux; macOS gets the regular PyPI wheels
 [tool.uv.sources]
-torch = { index = "pytorch-cu130" }
-torchvision = { index = "pytorch-cu130" }
+torch = { index = "pytorch-cu130", marker = "sys_platform == 'win32' or sys_platform == 'linux'" }
+torchvision = { index = "pytorch-cu130", marker = "sys_platform == 'win32' or sys_platform == 'linux'" }
 
 [[tool.uv.index]]
 name = "pytorch-cu130"
@@ -58,6 +68,9 @@ markers = ["gpu: needs the real EmbeddingGemma 2 model on CUDA (set SEMSEARCH_GP
 
 [tool.coverage.run]
 source = ["src/semsearch"]
+
+[tool.coverage.report]
+fail_under = 85
 
 [tool.pyright]
 venvPath = "."

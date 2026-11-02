@@ -8,5 +8,6 @@ __pycache__/
 htmlcov/
 dist/
 build/
-evals/.home/
+evals/.home*/
+evals/results/latest.json
 evals/private/

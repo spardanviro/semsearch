@@ -31,6 +31,49 @@ def test_hook_edited_paths_reads_known_keys() -> None:
     assert edited_paths({}) == []
 
 
+def test_hook_run_notifies_the_daemon_with_root_and_paths(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import semsearch.hook as hook_mod
+    calls: list[tuple[object, ...]] = []
+
+    class Client:
+        def __init__(self, settings: object, autostart: bool) -> None:
+            assert autostart is False                 # a hook must never start the daemon
+
+        def notify(self, root: object, paths: object, timeout: float) -> dict[str, object]:
+            calls.append((root, paths, timeout))
+            return {}
+
+    monkeypatch.setattr(hook_mod, "DaemonClient", Client)
+    project = tmp_path / "proj"
+    project.mkdir()
+    payload = ('{"tool_input": {"file_path": "' + (project / "a.py").as_posix() + '"}, '
+               '"cwd": "' + project.as_posix() + '"}')
+
+    assert run(payload, Settings(home=tmp_path / "home")) == 0
+    assert run('{"tool_input": {}}', Settings(home=tmp_path / "home")) == 0   # nothing edited
+    assert calls == [(project.resolve(), [(project / "a.py").as_posix()], hook_mod.NOTIFY_TIMEOUT_S)]
+
+
+def test_hook_run_logs_when_daemon_is_down(tmp_path: Path) -> None:
+    settings = Settings(home=tmp_path / "home")
+
+    run('{"tool_input": {"file_path": "x.py"}, "cwd": "' + tmp_path.as_posix() + '"}', settings)
+
+    assert "daemon not reachable" in (settings.log_dir / "hook.log").read_text("utf-8")
+
+
+def test_find_project_root_uses_claude_project_dir_only_without_start(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from semsearch.paths import find_project_root
+    (tmp_path / "repo" / ".git").mkdir(parents=True)
+    (tmp_path / "repo" / "pkg").mkdir()
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path / "elsewhere"))
+
+    assert find_project_root() == (tmp_path / "elsewhere").resolve()
+    assert find_project_root(tmp_path / "repo" / "pkg") == (tmp_path / "repo").resolve()
+
+
 def test_hook_run_never_fails_on_bad_input_or_missing_daemon(tmp_path: Path) -> None:
     settings = Settings(home=tmp_path / "home")
 

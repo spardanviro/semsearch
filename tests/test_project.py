@@ -242,7 +242,7 @@ def test_project_path_glob_and_modality_filters(project: Project, root: Path) ->
     code_only, _ = project.search("retry backoff", modality="code")
     docs_only, _ = project.search("retry backoff", path_globs=["docs/**"])
 
-    assert all(r.modality == "code" for r in code_only)
+    assert code_only and all(r.modality == "code" for r in code_only)
     assert [r.path for r in docs_only] == ["docs/retry.md"]
 
 

@@ -54,11 +54,16 @@ def test_e2e_hook_notifies_running_daemon(env: tuple[Settings, Path]) -> None:
 
     code = run_hook(f'{{"tool_name": "Write", "cwd": "{root.as_posix()}", '
                     f'"tool_input": {{"file_path": "{new_file.as_posix()}"}}}}', settings)
-    time.sleep(0.5)
-    data = client.search(root, "read inventory back from file")
+    deadline = time.monotonic() + 10       # poll: a slow machine needs more than a fixed sleep
+    while True:
+        data = client.search(root, "read inventory back from file")
+        found = any(r["path"] == "src/load.py" for r in data["results"])
+        if found or time.monotonic() > deadline:
+            break
+        time.sleep(0.2)
 
     assert code == 0
-    assert any(r["path"] == "src/load.py" for r in data["results"])
+    assert found
 
 
 def test_e2e_no_autostart_raises_when_daemon_absent(env: tuple[Settings, Path]) -> None:

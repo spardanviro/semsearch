@@ -25,18 +25,21 @@ similar to this snippet". It adds to Grep and LSP and replaces neither.
 
 ## How well it works
 
-All numbers come from benchmarks in this repo (`evals/`). The questions were written by agents
-that had not seen the implementation, and every expected answer was checked against the source.
-
 | Benchmark | Questions | MRR | Answer in top 5 |
 |---|---|---|---|
-| 6 real game-modding projects (C#, TS, GDScript, PowerShell, JS; up to 60k chunks) | 72 | 0.83 | 96% |
-| A public C# mod and this repository | 54 | 0.76 | 87% |
+| 6 private game-modding projects (C#, TS, GDScript, PowerShell, JS; up to 60k chunks) | 72 | 0.83 | 96% |
+| A public C# mod and this repository (`evals/cases/`) | 54 | 0.76 | 87% |
 
-These scores use the setup Claude runs in practice: a non-English question is first
-translated to English. The full methodology and every experiment we tried are in
-[docs/EVAL_REAL_PROJECTS.md](docs/EVAL_REAL_PROJECTS.md) and
-[docs/PHASE1_5.md](docs/PHASE1_5.md). Those docs are in Chinese.
+- **Who wrote the questions:** for the 72-question set, agents that had not seen the
+  implementation, with every expected answer checked against the source. Those cases stay on
+  the author's machine because the projects are private. The 54-question set is in this repo;
+  it was written by the developer, so it may be easier than real use.
+- **How they were asked:** the way Claude asks in practice: a non-English question is
+  translated to English first. The scores are for the hybrid mode; pure vector, the default,
+  is within 0.01 MRR.
+- **Details:** the full methodology and every experiment are in
+  [docs/EVAL_REAL_PROJECTS.md](docs/EVAL_REAL_PROJECTS.md) and
+  [docs/PHASE1_5.md](docs/PHASE1_5.md). Those docs are in Chinese.
 
 Speed (RTX 3060 6 GB):
 - **Warm query:** about 0.7 s, including CLI start-up.
@@ -48,9 +51,10 @@ Speed (RTX 3060 6 GB):
 - **Python 3.12** and [uv](https://docs.astral.sh/uv/).
 - **An NVIDIA GPU is recommended.** It is not required: without one the model runs on the CPU,
   just much more slowly.
-- **PyTorch build:** `pyproject.toml` installs the CUDA 13.0 build of PyTorch
-  (`pytorch-cu130`). For a different CUDA version, or for CPU only, change
-  `[tool.uv.sources]` / `[[tool.uv.index]]`.
+- **PyTorch build:** on Windows and Linux, `pyproject.toml` installs the CUDA 13.0 build of
+  PyTorch (`pytorch-cu130`), which needs NVIDIA driver 580 or newer. With an older driver the
+  model silently falls back to the CPU. For another CUDA version, or for CPU only, change
+  `[tool.uv.sources]` / `[[tool.uv.index]]`. macOS uses the regular PyPI build.
 - **Platform:** developed and tested on Windows 11. The code is cross-platform, but Linux and
   macOS have not been tested yet.
 - **Model download:** the model, `google/embeddinggemma-2`, is downloaded from Hugging Face on
@@ -77,10 +81,14 @@ deleted afterwards.
 | `~/.claude.json` | adds the `semsearch` MCP server |
 | `~/.claude/settings.json` | adds a PostToolUse hook that tells the daemon about edited files |
 | `~/.claude/agents/semantic-search.md` | the subagent definition |
-| `~/.claude/CLAUDE.md` | a marked block with tool routing rules |
+| `~/.claude/CLAUDE.md` | a marked block with tool routing rules (it replaces an existing `# 代码导航` section) |
 
-The routing rules are written in Chinese. Edit
-`src/semsearch/integrations/claude-md-snippet.md` before installing if you prefer English.
+- The routing rules are written in Chinese. Edit
+  `src/semsearch/integrations/claude-md-snippet.md` before installing if you prefer English.
+- Every touched file keeps two backups: `*.semsearch.bak` is the state before semsearch first
+  touched it, and `*.semsearch.prev` is the state before the latest change. They are full
+  copies: `~/.claude.json.semsearch.bak` contains whatever `~/.claude.json` held, tokens
+  included.
 
 Open a new Claude Code session afterwards so it loads the tools. To remove everything:
 
@@ -126,7 +134,12 @@ semsearch daemon stop        # free GPU memory; the next search restarts it
 - **`.gitignore`:** anything it excludes is never indexed.
 - **`.semsearchignore`:** add one at the project root, using the same syntax, to exclude more.
 - **Secrets:** files such as `.env*`, `*.pem`, `*.key`, `id_rsa*` and credentials files are
-  always skipped, even if an ignore rule tries to re-include them.
+  always skipped, whatever their case or folder, even if an ignore rule tries to re-include
+  them. See `SENSITIVE_PATTERNS` in `src/semsearch/config.py`.
+- **Generated files:** minified bundles are skipped, as are files whose lines average more
+  than 500 characters of content.
+- **Folders that are never indexed:** the home directory itself, a drive root, `~/.claude`
+  and `~/.ssh`. Open Claude Code in a project folder.
 
 ## Media
 
@@ -169,7 +182,7 @@ Settings come from environment variables:
 | `SEMSEARCH_IDLE_TIMEOUT` | `1200` | seconds of inactivity before the daemon exits |
 | `SEMSEARCH_SEARCH_MODE` | `vector` | `vector`, `hybrid` (vector plus a BM25 bonus for identifier-like queries) or `keyword` |
 | `SEMSEARCH_KEYWORD_WEIGHT` | `0.05` | the maximum BM25 bonus in `hybrid` mode |
-| `SEMSEARCH_MAX_FILE_BYTES` | `1000000` | larger files are skipped |
+| `SEMSEARCH_MAX_FILE_BYTES` | `1000000` | larger source/doc files are skipped (config files such as json/yaml/xml: fixed 200 KB) |
 | `SEMSEARCH_MAX_FILES` | `50000` | the per-project file limit |
 | `SEMSEARCH_BATCH_TOKENS` | `16384` | the embedding batch token budget; lower it if the GPU runs out of memory |
 | `SEMSEARCH_MODEL` | `google/embeddinggemma-2` | any sentence-transformers model id or local path |
@@ -178,17 +191,19 @@ Settings come from environment variables:
 | `SEMSEARCH_DOCUMENT_PROMPT` | automatic | the same, for indexed chunks |
 | `SEMSEARCH_CHUNK_TOKENS` | `600` | preferred chunk size in tokens |
 | `SEMSEARCH_MAX_TOKENS` | `1024` | hard chunk limit; it is capped at the model's own limit, with a warning |
+| `SEMSEARCH_MODEL_REVISION` | pinned commit | Hugging Face revision; the default model is pinned to the tested commit, other models use their default branch |
+| `SEMSEARCH_TRUST_REMOTE_CODE` | `false` | allow the model repository to run its own Python code |
+| `SEMSEARCH_MEDIA` | *(off)* | media kinds to index: `image`, `pdf`, `audio`, `video`, or `all` |
+| `SEMSEARCH_MAX_MEDIA_BYTES` | `500000000` | larger media files are skipped |
+| `SEMSEARCH_MAX_PDF_PAGES` | `500` | pages indexed per PDF |
+| `SEMSEARCH_MAX_MEDIA_SECONDS` | `3600` | how much of each audio/video file is indexed |
+| `SEMSEARCH_EMBEDDER` | `st` | embedding backend: `st` (sentence-transformers) or `fake` (tests only) |
 
 When the two prompt variables are unset, the choice is automatic:
 - EmbeddingGemma uses its `SearchQuery` / `Document` prompts.
 - Another model uses the `query` / `document` prompts from its own sentence-transformers
   config, if it defines them.
 - Otherwise no prompt is used.
-| `SEMSEARCH_TRUST_REMOTE_CODE` | `false` | allow the model repository to run its own Python code |
-| `SEMSEARCH_MEDIA` | *(off)* | media kinds to index: `image`, `pdf`, `audio`, `video`, or `all` |
-| `SEMSEARCH_MAX_MEDIA_BYTES` | `500000000` | larger media files are skipped |
-| `SEMSEARCH_MAX_PDF_PAGES` | `500` | pages indexed per PDF |
-| `SEMSEARCH_MAX_MEDIA_SECONDS` | `3600` | how much of each audio/video file is indexed |
 
 The daemon reads these settings when it starts. After changing one, run
 `semsearch daemon stop`; the next search starts the daemon again with the new values. Set them
@@ -246,8 +261,12 @@ PostToolUse hook ────────────┘                        
   hash. Chunks are matched by hash, so moved or copied code reuses its existing vectors.
 - **Duplicate code:** identical code in copied folders shows up as a single result that lists
   the other copies.
-- **Untrusted previews:** previews are sanitized and labeled as untrusted file content before
-  Claude sees them.
+- **Untrusted content:** paths, symbol names and previews come from repository files. Before
+  Claude sees them, invisible characters are stripped, length is capped, and they are labeled
+  as untrusted.
+- **Private data:** the daemon listens on 127.0.0.1 only and requires a token. Its folder (the
+  token, indexes and logs) is made readable by the current user only; on Windows this is done
+  with an explicit ACL.
 
 The full design (in Chinese) is in [docs/DESIGN.md](docs/DESIGN.md).
 
@@ -258,11 +277,17 @@ uv sync
 git config core.hooksPath .githooks   # after each commit, refresh the installed tool
 uv run pytest -q
 uv run ruff check src tests evals
-pyright src tests evals
+uv run pyright src tests evals
 ```
 
-The post-commit hook reinstalls the uv tool copy whenever a commit touches `src/`,
-`pyproject.toml` or `uv.lock`, so Claude Code always runs committed code.
+- **Real-model tests:** they are skipped by default. Set `SEMSEARCH_GPU_TESTS=1` to run them
+  (`uv run pytest -q -m gpu`).
+- **Test isolation:** the tests ignore your own `SEMSEARCH_*` variables.
+- **Post-commit hook:** when a commit touches `src/`, `pyproject.toml` or `uv.lock`, it
+  reinstalls the uv tool copy from a snapshot of `HEAD`, with dependencies pinned to
+  `uv.lock`. Uncommitted edits never reach Claude Code. The hook does not run on pull, checkout
+  or rebase; run `uv tool install . --python 3.12 --reinstall` after those. Skip it once with
+  `SEMSEARCH_SKIP_SYNC=1 git commit ...`.
 
 Benchmarks:
 
@@ -271,7 +296,9 @@ uv run python evals/index_projects.py <project root> ...
 uv run python evals/run.py --modes "vector,hybrid,hybrid;tr=1" --show-misses
 ```
 
-- Case files live in `evals/cases/`; see `semsearch.json` for the format.
+- Case files live in `evals/cases/`; see `semsearch.json` for the format. A suite whose
+  project folder does not exist on your machine is skipped; `raftmod.json` needs a local
+  checkout of [RaftLocalCoop](https://github.com/spardanviro/RaftLocalCoop).
 - Put cases about private projects in `evals/private/cases/`. That folder is gitignored and is
   picked up automatically.
 

@@ -94,8 +94,14 @@ def from_blob(blob: bytes) -> np.ndarray:
     return np.frombuffer(blob, dtype=np.float32)
 
 
+MIN_SQLITE = (3, 43)   # contentless_delete FTS5 tables (3.43), RETURNING (3.35)
+
+
 class Store:
     def __init__(self, db_path: Path) -> None:
+        if sqlite3.sqlite_version_info < MIN_SQLITE:
+            raise RuntimeError(f"semsearch needs SQLite >= {'.'.join(map(str, MIN_SQLITE))}; "
+                               f"this Python has {sqlite3.sqlite_version}")
         db_path.parent.mkdir(parents=True, exist_ok=True)
         self.path = db_path
         self.db = sqlite3.connect(db_path, check_same_thread=False, isolation_level=None)

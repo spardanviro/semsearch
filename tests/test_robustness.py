@@ -122,6 +122,38 @@ def test_remove_daemon_file_only_removes_its_own(settings: Settings) -> None:
     assert settings.daemon_file.exists()
 
 
+class _Server:
+    should_exit = False
+
+
+def _idle_state(settings: Settings, busy: bool) -> Any:
+    from semsearch.daemon.app import DaemonState
+
+    class State(DaemonState):
+        def any_busy(self) -> bool:
+            return busy
+
+    return State(settings=replace(settings, idle_timeout_s=0.01), embedder=FakeEmbedder())
+
+
+@pytest.mark.parametrize("busy", [False, True])
+def test_watch_idle_stops_an_idle_daemon_but_never_a_busy_one(
+        settings: Settings, monkeypatch: pytest.MonkeyPatch, busy: bool) -> None:
+    import threading
+    monkeypatch.setattr(daemon_main, "IDLE_CHECK_S", 0.02)
+    state, server = _idle_state(settings, busy), _Server()
+    worker = threading.Thread(target=daemon_main.watch_idle, args=(state, server), daemon=True)
+
+    worker.start()
+    worker.join(0.5)
+    stopped_while_busy = server.should_exit
+    state.shutdown_requested.set()            # an explicit /shutdown always wins
+    worker.join(2)
+
+    assert stopped_while_busy is (not busy)
+    assert server.should_exit and not worker.is_alive()
+
+
 def test_daemon_that_crashes_on_start_fails_fast(settings: Settings,
                                                  monkeypatch: pytest.MonkeyPatch) -> None:
     # Regression: a child that died at once still made the client wait the full 120 s.

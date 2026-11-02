@@ -202,6 +202,9 @@ def main() -> None:
     rows: list[dict[str, object]] = []
     for suite_path in suites:
         root, aliases, cases = load_suite(suite_path)
+        if not root.is_dir():   # e.g. a suite about a project that only exists on its author's disk
+            print(f"[{suite_path.stem}] skipped: project {root} not found", file=sys.stderr)
+            continue
         t0 = time.perf_counter()
         project = Project(root, settings, embedder)
         if not project.wait_idle(INDEX_TIMEOUT_S):

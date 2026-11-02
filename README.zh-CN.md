@@ -13,14 +13,14 @@ Claude Code 平时用 Grep 和 LSP 找代码，前提是知道名字。semsearch
 - **图片、PDF、音频、视频（可选）**：同样可以按内容检索，比如"蓝色爆炸序列帧"、"有体素可见性示意图的那一页"、"角色倒地瘫软的那段视频"。详见下方[媒体检索](#媒体检索)。
 
 ## 效果
-数字来自仓库里的评测集（`evals/`）。题目由没看过实现的子代理编写，每个答案都核对过源码。
-
 | 评测集 | 题数 | MRR | 答案进前 5 |
 |---|---|---|---|
-| 6 个真实游戏 mod 项目（C#、TS、GDScript、PowerShell、JS；最大 6 万个块） | 72 | 0.83 | 96% |
-| 1 个公开的 C# mod + 本仓库 | 54 | 0.76 | 87% |
+| 6 个私人游戏 mod 项目（C#、TS、GDScript、PowerShell、JS；最大 6 万个块） | 72 | 0.83 | 96% |
+| 1 个公开的 C# mod + 本仓库（`evals/cases/`） | 54 | 0.76 | 87% |
 
-测试方式与 Claude 实际使用时一致：非英文问题先翻译成英文再查。评测方法和试过的全部方案见 [docs/EVAL_REAL_PROJECTS.md](docs/EVAL_REAL_PROJECTS.md) 与 [docs/PHASE1_5.md](docs/PHASE1_5.md)。
+- **题目来源**：72 题由没看过实现的子代理编写，每个答案都核对过源码；由于对应项目是私人项目，这些题只保存在作者本地，没有公开。54 题在本仓库里，是开发者自己写的，可能比实际使用时简单一些。
+- **测试方式**：与 Claude 实际使用时一致，非英文问题先翻译成英文再查。表中分数是 hybrid 模式的结果；默认的纯向量模式与之相差不到 0.01 MRR。
+- **详细说明**：评测方法和试过的全部方案见 [docs/EVAL_REAL_PROJECTS.md](docs/EVAL_REAL_PROJECTS.md) 与 [docs/PHASE1_5.md](docs/PHASE1_5.md)。
 
 速度（RTX 3060 6GB）：
 - 已加载模型时查询约 0.7 秒（含 CLI 启动）；后台服务启动后的第一次查询约 20 秒，要先加载模型。
@@ -29,7 +29,7 @@ Claude Code 平时用 Grep 和 LSP 找代码，前提是知道名字。semsearch
 ## 环境要求
 - **Python 3.12** 和 [uv](https://docs.astral.sh/uv/)。
 - **推荐 NVIDIA 显卡**：没有显卡会退回 CPU，能用但慢很多。
-- **PyTorch**：`pyproject.toml` 安装的是 CUDA 13.0 版（`pytorch-cu130`）。其他 CUDA 版本或纯 CPU，改 `[tool.uv.sources]` / `[[tool.uv.index]]`。
+- **PyTorch**：Windows 和 Linux 上，`pyproject.toml` 安装 CUDA 13.0 版（`pytorch-cu130`），需要 580 及以上版本的 NVIDIA 驱动，驱动太旧时会静默退回 CPU。要用其他 CUDA 版本或纯 CPU，改 `[tool.uv.sources]` / `[[tool.uv.index]]`。macOS 使用 PyPI 上的普通版本。
 - **系统**：在 Windows 11 上开发和测试。代码本身跨平台，Linux 和 macOS 尚未测试。
 - **模型**：`google/embeddinggemma-2` 在第一次使用时从 Hugging Face 下载。
 
@@ -43,14 +43,20 @@ semsearch install-claude             # 注册到 Claude Code（执行前会确�
 ```
 `uv tool install` 会把 semsearch 复制到独立环境，之后移动或删除源码目录都不影响使用。
 
-`install-claude` 只改用户级配置，改之前先备份原文件（`*.semsearch.bak`）：
+`install-claude` 只改用户级配置：
 
 | 文件 | 改动 |
 |---|---|
 | `~/.claude.json` | 注册 `semsearch` MCP 服务 |
 | `~/.claude/settings.json` | 添加 PostToolUse hook，编辑文件后通知后台服务 |
 | `~/.claude/agents/semantic-search.md` | 子代理定义 |
-| `~/.claude/CLAUDE.md` | 一段带标记的工具路由规则 |
+| `~/.claude/CLAUDE.md` | 一段带标记的工具路由规则（会替换已有的 `# 代码导航` 一节） |
+
+每个被改动的文件都留两份备份：
+- `*.semsearch.bak`：semsearch 第一次改动它之前的样子；
+- `*.semsearch.prev`：最近一次改动之前的样子。
+
+备份是原文件的完整副本，例如 `~/.claude.json` 里的 token 也会原样出现在 `~/.claude.json.semsearch.bak` 里。
 
 装好后开一个新的 Claude Code 会话即可生效。卸载：
 ```bash
@@ -87,7 +93,9 @@ semsearch daemon stop        # 释放显存；下次检索会自动重启
 ### 排除文件
 - `.gitignore` 排除的文件不会被索引。
 - 还想排除别的，在项目根目录建 `.semsearchignore`，写法和 `.gitignore` 相同。
-- `.env*`、`*.pem`、`*.key`、`id_rsa*`、凭据文件等敏感文件一律跳过，忽略规则里写 `!` 也不能把它们加回来。
+- `.env*`、`*.pem`、`*.key`、`id_rsa*`、凭据文件等敏感文件一律跳过：不区分大小写，任何目录层级都生效，忽略规则里写 `!` 也不能把它们加回来。完整列表见 `src/semsearch/config.py` 里的 `SENSITIVE_PATTERNS`。
+- 压缩过的打包文件也跳过：平均每行内容超过 500 个字符的文件不会被索引。
+- 以下目录不会被当作项目索引：用户主目录本身、磁盘根目录、`~/.claude`、`~/.ssh`。请在具体的项目文件夹里打开 Claude Code。
 
 ## 媒体检索
 EmbeddingGemma 2 把文字、图片、音频、视频映射到同一个向量空间，所以用一句文字就能搜到这些媒体。媒体检索**默认关闭**，用下面的命令开启：
@@ -116,7 +124,7 @@ semsearch daemon stop
 | `SEMSEARCH_IDLE_TIMEOUT` | `1200` | 后台服务空闲多少秒后退出 |
 | `SEMSEARCH_SEARCH_MODE` | `vector` | `vector`、`hybrid`（对含标识符的查询加 BM25 分）、`keyword` |
 | `SEMSEARCH_KEYWORD_WEIGHT` | `0.05` | `hybrid` 模式下 BM25 加分的上限 |
-| `SEMSEARCH_MAX_FILE_BYTES` | `1000000` | 超过这个大小的文件跳过 |
+| `SEMSEARCH_MAX_FILE_BYTES` | `1000000` | 超过这个大小的源码和文档文件跳过（json、yaml、xml 等配置文件的上限固定为 200 KB） |
 | `SEMSEARCH_MAX_FILES` | `50000` | 每个项目最多索引的文件数 |
 | `SEMSEARCH_BATCH_TOKENS` | `16384` | 每批嵌入的 token 上限，显存不够时调小 |
 | `SEMSEARCH_MODEL` | `google/embeddinggemma-2` | 任意 sentence-transformers 模型名或本地路径 |
@@ -125,16 +133,18 @@ semsearch daemon stop
 | `SEMSEARCH_DOCUMENT_PROMPT` | 自动 | 文档提示词，规则同上，作用于被索引的代码块 |
 | `SEMSEARCH_CHUNK_TOKENS` | `600` | 代码块的目标大小（token） |
 | `SEMSEARCH_MAX_TOKENS` | `1024` | 单块的硬上限；超过模型自身上限时自动压到模型上限，并给出警告 |
-
-两个提示词变量都不设时，程序按以下顺序自动选择：
-- EmbeddingGemma：用它自带的 `SearchQuery` / `Document`；
-- 其他模型：如果它的 sentence-transformers 配置里定义了 `query` / `document`，就用这两个；
-- 以上都没有：不加提示词。
+| `SEMSEARCH_MODEL_REVISION` | 固定版本 | Hugging Face 上的模型版本；默认模型固定在测试过的那个 commit，其他模型用仓库默认分支 |
 | `SEMSEARCH_TRUST_REMOTE_CODE` | `false` | 是否允许运行模型仓库自带的 Python 代码 |
 | `SEMSEARCH_MEDIA` | （关闭） | 要索引的媒体类型：`image`、`pdf`、`audio`、`video`，或 `all` |
 | `SEMSEARCH_MAX_MEDIA_BYTES` | `500000000` | 超过这个大小的媒体文件跳过 |
 | `SEMSEARCH_MAX_PDF_PAGES` | `500` | 每个 PDF 最多索引的页数 |
 | `SEMSEARCH_MAX_MEDIA_SECONDS` | `3600` | 每个音视频文件最多索引的时长（秒） |
+| `SEMSEARCH_EMBEDDER` | `st` | 嵌入后端：`st`（sentence-transformers）；`fake` 只供测试使用 |
+
+两个提示词变量都不设时，程序按以下顺序自动选择：
+- EmbeddingGemma：用它自带的 `SearchQuery` / `Document`；
+- 其他模型：如果它的 sentence-transformers 配置里定义了 `query` / `document`，就用这两个；
+- 以上都没有：不加提示词。
 
 后台服务只在启动时读取这些配置。改完要执行 `semsearch daemon stop`，下次检索时服务会按新配置重新启动。这些变量要设成**用户环境变量**，这样不管后台服务是由 Claude Code 还是命令行拉起的，都能读到。
 
@@ -164,7 +174,8 @@ PostToolUse hook ────────────┘                        
 - **存储与检索**：数据以 SQLite（WAL 模式）为准，向量以 BLOB 存储。检索在 numpy 里做暴力矩阵乘法，这个规模下比 sqlite-vec 快约 30 倍。
 - **变更检测**：先比 mtime 和文件大小，再比 blake3 内容哈希。按块哈希复用向量，搬动或复制的代码不会重新计算嵌入。
 - **重复代码**：复制出来的相同代码合并成一条结果，并注明其他副本的位置。
-- **安全**：返回给 Claude 的预览会去掉换行、控制字符等可能伪造结果的内容，并标注为不可信的文件内容。
+- **不可信内容**：路径、符号名和预览都来自仓库文件。返回给 Claude 之前，会去掉换行、控制字符和不可见字符，限制长度，并标注为不可信内容。
+- **私有数据**：后台服务只监听 127.0.0.1，访问需要 token。它的数据目录（token、索引和日志）只允许当前用户读取；在 Windows 上通过显式的 ACL 实现。
 
 完整设计见 [docs/DESIGN.md](docs/DESIGN.md)。
 
@@ -174,16 +185,20 @@ uv sync
 git config core.hooksPath .githooks   # 每次提交后自动更新已安装的版本
 uv run pytest -q
 uv run ruff check src tests evals
-pyright src tests evals
+uv run pyright src tests evals
 ```
-提交改动了 `src/`、`pyproject.toml` 或 `uv.lock` 时，post-commit hook 会重新安装 uv tool 里的副本，保证 Claude Code 用的总是已提交的代码。
+- **真实模型测试**：默认跳过，设 `SEMSEARCH_GPU_TESTS=1` 后运行 `uv run pytest -q -m gpu`。
+- **测试隔离**：测试会忽略你自己设置的 `SEMSEARCH_*` 环境变量。
+- **提交后自动同步**：提交改动了 `src/`、`pyproject.toml` 或 `uv.lock` 时，post-commit hook 会从 `HEAD` 的快照重新安装 uv tool 里的副本，依赖版本按 `uv.lock` 锁定，未提交的改动不会进入 Claude Code。
+- **不会自动同步的情况**：pull、checkout、rebase 不会触发这个 hook，之后要手动执行 `uv tool install . --python 3.12 --reinstall`。
+- **跳过一次同步**：`SEMSEARCH_SKIP_SYNC=1 git commit ...`。
 
 评测：
 ```bash
 uv run python evals/index_projects.py <项目根目录> ...
 uv run python evals/run.py --modes "vector,hybrid,hybrid;tr=1" --show-misses
 ```
-- 题目放在 `evals/cases/`，格式参考 `semsearch.json`。
+- 题目放在 `evals/cases/`，格式参考 `semsearch.json`。本机找不到对应项目目录的题目集会被跳过；`raftmod.json` 需要本地有一份 [RaftLocalCoop](https://github.com/spardanviro/RaftLocalCoop)。
 - 私人项目的题目放 `evals/private/cases/`：这个目录不会被提交，评测时会自动读取。
 
 ## 许可证
