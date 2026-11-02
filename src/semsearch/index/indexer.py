@@ -13,7 +13,9 @@ import numpy as np
 
 from semsearch.config import Settings
 from semsearch.embed.base import Embedder
+from semsearch.index import keywords
 from semsearch.index.chunkers import Chunk, chunk_text
+from semsearch.index.chunkers.base import chunk_body
 from semsearch.index.scanner import FileInfo, read_text
 from semsearch.index.store import FileRow, NewChunk, Store
 from semsearch.index.vectors import VectorCache
@@ -167,7 +169,9 @@ class Indexer:
                                              p.content_hash, p.info.modality, p.info.lang, now)
                 removed.extend(self.store.delete_chunks_of_file(fid))
                 rows = [NewChunk(h, p.info.modality, c.start_line, c.end_line, c.symbol, c.kind,
-                                 c.preview, c.tokens, vectors[h])
+                                 c.preview, c.tokens, vectors[h],
+                                 keywords.document(f"{p.info.path} {c.symbol}"),
+                                 keywords.document(chunk_body(c.text)))
                         for h, c in zip(p.hashes, p.chunks, strict=True)]
                 ids = self.store.insert_chunks(fid, rows)
                 added.extend((cid, p.info.path, p.info.modality, r.embedding)

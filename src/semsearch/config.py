@@ -1,6 +1,7 @@
 """Settings and defaults. Every value can be overridden with a SEMSEARCH_* environment variable."""
 from __future__ import annotations
 
+import math
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -8,7 +9,10 @@ from pathlib import Path
 MODEL_ID = "google/embeddinggemma-2"
 EMBED_DIM = 768
 CHUNKER_VERSION = "3"   # 2: "\n"-only line split, boilerplate-only gaps dropped; 3: lead trim
-SCHEMA_VERSION = "2"    # 2: AUTOINCREMENT chunk ids
+SCHEMA_VERSION = "3"    # 2: AUTOINCREMENT chunk ids; 3: chunks_fts keyword index
+KEYWORDS_VERSION = "1"  # bump when keywords.terms() changes: the FTS index is rebuilt
+SEARCH_MODES = ("hybrid", "vector", "keyword")
+DEFAULT_KEYWORD_WEIGHT = 0.05   # max BM25 bonus added to cosine (tuned on evals/, docs/PHASE1_5.md)
 
 # file extension -> tree-sitter language name
 CODE_LANGS: dict[str, str] = {
@@ -98,6 +102,17 @@ class Settings:
     search_wait_s: float = 1.5
     preview_chars: int = 600
     per_file_results: int = 2
+    search_mode: str = field(default_factory=lambda: os.environ.get("SEMSEARCH_SEARCH_MODE", "hybrid"))
+    keyword_weight: float = field(
+        default_factory=lambda: _env_float("SEMSEARCH_KEYWORD_WEIGHT", DEFAULT_KEYWORD_WEIGHT))
+
+    def __post_init__(self) -> None:
+        if self.search_mode not in SEARCH_MODES:
+            raise ValueError(f"SEMSEARCH_SEARCH_MODE must be one of {SEARCH_MODES}, "
+                             f"got {self.search_mode!r}")
+        if not (math.isfinite(self.keyword_weight) and self.keyword_weight >= 0):
+            raise ValueError(f"SEMSEARCH_KEYWORD_WEIGHT must be a finite number >= 0, "
+                             f"got {self.keyword_weight!r}")
 
     @property
     def projects_dir(self) -> Path:

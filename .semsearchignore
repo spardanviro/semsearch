@@ -1,0 +1,2 @@
+# eval cases quote the benchmark queries verbatim: indexing them would leak the answers
+evals/

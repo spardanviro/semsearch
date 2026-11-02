@@ -18,8 +18,17 @@ class Chunk:
     tokens: int
 
 
+HEADER_END = "\n---\n"
+
+
 def make_header(path: str, symbol: str, kind: str, lang: str) -> str:
-    return f"path: {path}\nsymbol: {symbol}\nkind: {kind}\nlang: {lang}\n---\n"
+    return f"path: {path}\nsymbol: {symbol}\nkind: {kind}\nlang: {lang}{HEADER_END}"
+
+
+def chunk_body(text: str) -> str:
+    """`Chunk.text` without the header added by `make_header`."""
+    _, sep, body = text.partition(HEADER_END)
+    return body if sep else text
 
 
 def make_preview(body: str, limit: int) -> str:

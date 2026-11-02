@@ -35,6 +35,11 @@ CREATE TABLE IF NOT EXISTS chunks (
 );
 CREATE INDEX IF NOT EXISTS idx_chunks_file ON chunks(file_id);
 CREATE INDEX IF NOT EXISTS idx_chunks_hash ON chunks(chunk_hash);
+-- keyword index; rowid = chunks.id. Contentless: only terms are stored, text stays in chunks.
+CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
+  meta, body, content='', contentless_delete=1,
+  tokenize="unicode61 remove_diacritics 2 tokenchars '_'"
+);
 """
 
 
@@ -58,6 +63,8 @@ class NewChunk:
     preview: str
     tokens: int
     embedding: np.ndarray
+    keywords_meta: str = ""    # keywords.document(path + symbol)
+    keywords_body: str = ""    # keywords.document(chunk body)
 
 
 @dataclass(frozen=True)
@@ -107,10 +114,11 @@ class Store:
             return False
         if current.get("schema_version") != expected.get("schema_version"):
             # table layout may differ: recreate instead of just deleting rows
-            self.db.executescript("DROP TABLE IF EXISTS chunks; DROP TABLE IF EXISTS files; "
-                                  "DROP TABLE IF EXISTS meta;")
+            self.db.executescript("DROP TABLE IF EXISTS chunks_fts; DROP TABLE IF EXISTS chunks; "
+                                  "DROP TABLE IF EXISTS files; DROP TABLE IF EXISTS meta;")
             self.db.executescript(SCHEMA)
         with self.transaction():
+            self.db.execute("DELETE FROM chunks_fts")
             self.db.execute("DELETE FROM chunks")
             self.db.execute("DELETE FROM files")
             self.db.execute("DELETE FROM meta")
@@ -119,6 +127,7 @@ class Store:
 
     def clear(self) -> None:
         with self.transaction():
+            self.db.execute("DELETE FROM chunks_fts")
             self.db.execute("DELETE FROM chunks")
             self.db.execute("DELETE FROM files")
 
@@ -160,6 +169,10 @@ class Store:
 
     def delete_chunks_of_file(self, file_id: int) -> list[int]:
         ids = self.chunk_ids_of_file(file_id)
+        for i in range(0, len(ids), 500):
+            part = ids[i:i + 500]
+            marks = ",".join("?" * len(part))
+            self.db.execute(f"DELETE FROM chunks_fts WHERE rowid IN ({marks})", part)
         self.db.execute("DELETE FROM chunks WHERE file_id = ?", (file_id,))
         return ids
 
@@ -184,7 +197,18 @@ class Store:
                 (file_id, c.chunk_hash, c.modality, c.start_line, c.end_line, c.symbol, c.kind,
                  c.preview, c.tokens, to_blob(c.embedding))).fetchone()
             ids.append(int(row[0]))
+            if c.keywords_meta or c.keywords_body:
+                self.db.execute("INSERT INTO chunks_fts(rowid, meta, body) VALUES (?, ?, ?)",
+                                (row[0], c.keywords_meta, c.keywords_body))
         return ids
+
+    def keyword_search(self, match: str, limit: int,
+                       weights: tuple[float, float]) -> list[tuple[int, float]]:
+        """-> [(chunk id, bm25 score)], best first; scores are positive (higher = better)."""
+        rows = self.db.execute(
+            "SELECT rowid, -bm25(chunks_fts, ?, ?) AS s FROM chunks_fts WHERE chunks_fts MATCH ? "
+            "ORDER BY s DESC LIMIT ?", (weights[0], weights[1], match, limit))
+        return [(int(cid), float(score)) for cid, score in rows]
 
     def iter_vectors(self) -> Iterator[tuple[int, str, str, np.ndarray]]:
         rows = self.db.execute("SELECT c.id, f.path, c.modality, c.embedding FROM chunks c "

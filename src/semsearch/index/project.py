@@ -7,7 +7,7 @@ import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from semsearch.config import CHUNKER_VERSION, SCHEMA_VERSION, Settings
+from semsearch.config import CHUNKER_VERSION, KEYWORDS_VERSION, SCHEMA_VERSION, Settings
 from semsearch.embed.base import Embedder
 from semsearch.index import scanner
 from semsearch.index.indexer import Indexer, UpdateStats, diff
@@ -58,6 +58,7 @@ class Project:
 
     def _expected_meta(self) -> dict[str, str]:
         return {"schema_version": SCHEMA_VERSION, "chunker_version": CHUNKER_VERSION,
+                "keywords_version": KEYWORDS_VERSION,
                 "model_id": self.embedder.model_id, "dim": str(self.embedder.dim),
                 "load_mode": self.embedder.load_mode, "root": str(self.root)}
 
@@ -171,7 +172,8 @@ class Project:
         fresh = self.wait_idle(self.settings.search_wait_s)
         results = search(self.store, self.cache, self.embedder, self.db_lock, query,
                          k + VANISHED_SPARE, path_globs, modality, min_score,
-                         self.settings.per_file_results)
+                         self.settings.per_file_results, self.settings.search_mode,
+                         self.settings.keyword_weight)
         return self._drop_vanished(results)[:k], fresh
 
     def _drop_vanished(self, results: list[SearchResult]) -> list[SearchResult]:

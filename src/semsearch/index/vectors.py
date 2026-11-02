@@ -112,6 +112,16 @@ class VectorCache:
             top = top[np.argsort(-scores[top])]
             return [(int(self._ids[r]), float(scores[r])) for r in top]
 
+    def scores(self, query: np.ndarray, ids: Iterable[int]) -> dict[int, float]:
+        """Cosine score of specific chunks (e.g. keyword-only hits); unknown ids are skipped."""
+        with self._lock:
+            known = [(cid, self._row_of[cid]) for cid in ids if cid in self._row_of]
+            if not known:
+                return {}
+            rows = np.fromiter((r for _, r in known), dtype=np.int64, count=len(known))
+            vals = self._vecs[rows] @ query.astype(np.float32)
+            return {cid: float(v) for (cid, _), v in zip(known, vals, strict=True)}
+
     def ids(self) -> Sequence[int]:
         with self._lock:
             return list(self._row_of)

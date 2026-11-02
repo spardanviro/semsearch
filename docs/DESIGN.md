@@ -167,21 +167,22 @@ CREATE TABLE chunks (
 CREATE INDEX idx_chunks_file ON chunks(file_id);
 CREATE INDEX idx_chunks_hash ON chunks(chunk_hash);
 
--- 阶段 1.5：混合检索
-CREATE VIRTUAL TABLE fts_chunks USING fts5(
-  text, symbol, path, content='', tokenize='unicode61'
+-- 阶段 1.5：关键词索引（rowid = chunks.id；只存词，不存原文）
+CREATE VIRTUAL TABLE chunks_fts USING fts5(
+  meta, body, content='', contentless_delete=1,
+  tokenize="unicode61 remove_diacritics 2 tokenchars '_'"
 );
 ```
 
 - 嵌入复用：同一 `chunk_hash` 已存在向量时直接复制，不重新计算（文件重命名、代码搬移时尤其有用）。
-- `meta` 中 `model_id / dim / load_mode / chunker_version` 任一不一致 → 自动全量重建。
+- `meta` 中 `model_id / dim / load_mode / chunker_version / keywords_version / schema_version` 任一不一致 → 自动全量重建。
 
 ### 3.6 检索流程
 1. 处理检索前先做**新鲜度检查**（见第 4 节），把脏文件同步更新完，或在超时预算内尽量更新。
 2. `encode_queries([query])` → 与 VectorCache 做矩阵乘法 → `argpartition` 取 `k * 4` 个候选。
 3. 过滤：`path_glob`、`modality`、`min_score`。
 4. 去重：每个文件最多保留 2 个块；相邻/重叠块合并为一个行区间。
-5. （阶段 1.5）混合检索：FTS5 BM25 结果与向量结果做 RRF 融合，对查询里包含标识符的场景更稳。
+5. 混合检索（阶段 1.5，默认）：查询里有标识符形状的词时，FTS5 BM25 结果按"余弦 + 0.05 × 归一化 BM25"并入排序；其余查询为纯向量。RRF 等方案在评测中更差，见 `docs/PHASE1_5.md`。`SEMSEARCH_SEARCH_MODE=vector|keyword|hybrid` 可切换。
 6. 返回 top-k：
 
 ```json
@@ -341,7 +342,8 @@ SearchEngine/
 │  │  ├─ chunkers/        # code.py / markdown.py / window.py / pdf.py / media.py
 │  │  ├─ store.py         # SQLite schema、迁移、读写
 │  │  ├─ updater.py       # 增量更新算法
-│  │  └─ search.py        # KNN、过滤、去重、RRF
+│  │  ├─ keywords.py      # 关键词分词（标识符拆分）
+│  │  └─ search.py        # KNN、关键词加分、过滤、去重
 │  ├─ client.py           # 连接/拉起 daemon 的共享客户端
 │  ├─ mcp_server.py
 │  ├─ hook.py
@@ -349,9 +351,10 @@ SearchEngine/
 ├─ integrations/claude/
 │  ├─ agents/semantic-search.md
 │  └─ claude-md-snippet.md
-├─ eval/
-│  ├─ queries/<repo>.jsonl   # {query, expected_paths, kind}
-│  └─ run_eval.py
+├─ evals/
+│  ├─ cases/<repo>.json      # {project, aliases, cases: [{q, tags, expect: [{path, symbol|lines}]}]}
+│  ├─ results/               # 每次评测的结果
+│  └─ run.py
 └─ tests/                    # unit / integration / e2e
 ```
 
@@ -396,9 +399,13 @@ SearchEngine/
 - daemon 校验 Host 头（防 DNS rebinding），token 文件以仅本人可读的方式创建；客户端不走系统代理；只允许一个 daemon 实例；启动锁在成功或失败后都会释放。
 - Windows 上调用 rg / git 不再弹出控制台窗口；hook 通知的文件同样遵守 .gitignore；`bin` / `build` 等目录只在项目没有 .gitignore 时才默认排除。
 
-### 阶段 1.5：检索质量
-- [ ] FTS5 混合检索 + RRF
-- [ ] 评估集与 `run_eval.py`，调块大小、头部格式、去重策略
+### 阶段 1.5：检索质量（已完成，见 `docs/PHASE1_5.md`）
+- [x] 评测集（2 个项目共 54 条）与 `evals/run.py`
+- [x] FTS5 关键词索引 + 混合检索（只对含标识符的查询加 BM25 分；RRF 评测更差，未采用）
+- [ ] 中文概念查询仍偏弱（MRR 0.59，英文 0.82），候选方向见报告
+- [ ] 调块大小、块头格式、每文件结果数（用评测集验证）
+
+**结果**：MRR 0.698 → 0.690（基本持平），R@5 0.796 → 0.815。关键词索引约占 8% 空间，查询约 1 ms。
 
 ### 阶段 2：图片与 PDF
 - [ ] 视觉编码器按需加载
@@ -418,14 +425,15 @@ SearchEngine/
   - 描述类："把配置从环境变量读进来的地方"
   - 相似类：给一段代码，找类似实现
 - 指标：Recall@5、Recall@10、MRR；同时记录"用 grep 需要几次尝试才能找到"作为对照。
-- 每次调整分块或检索策略都跑一遍，结果写入 `eval/results/`。
+- 每次调整分块或检索策略都跑一遍，结果写入 `evals/results/`。
+- 已实现：`uv run python evals/run.py --modes vector,hybrid --show-misses`（使用独立索引目录 `evals/.home`）。
 
 ---
 
 ## 9. 风险与待确认事项
 | 项 | 风险 | 处理 |
 |---|---|---|
-| 中文查询召回偏弱 | 阶段 0 中文 R@10 为 80%，英文为 95% | subagent 加英文改写；阶段 1.5 加 FTS5 混合检索；用真实项目评估集复核 |
+| 中文查询召回偏弱 | 阶段 1.5 评测：中文 MRR 0.59，英文 0.82；关键词检索帮不上（中文描述对英文代码） | subagent 加英文改写；后续试块头加注释摘要或其他 prompt，用评测集验证 |
 | 大型 C# 项目首次索引慢 | 1 万多个文件可能要 20–30 分钟 | 后台索引、返回部分结果并标注进度；阶段 1 尝试按 token 预算组 batch 提速 |
 | 6GB 显存 | 全模态 + 大批量可能 OOM | 自适应批大小；默认只加载文本编码器；空闲释放 |
 | Windows 兼容 | 路径分隔符与大小写（依赖兼容性已在阶段 0 验证） | 路径统一规范化为小写盘符 + `/` |

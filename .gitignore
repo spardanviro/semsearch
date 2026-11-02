@@ -8,3 +8,5 @@ __pycache__/
 htmlcov/
 dist/
 build/
+evals/.home/
+evals/private/
