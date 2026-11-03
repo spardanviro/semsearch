@@ -1,6 +1,6 @@
 [project]
 name = "semsearch"
-version = "0.1.0"
+version = "0.1.1"
 description = "Local semantic code search for Claude Code, powered by EmbeddingGemma 2"
 readme = "README.md"
 # 3.12 only: the CUDA 13 torch wheels and tree-sitter-language-pack were verified on it

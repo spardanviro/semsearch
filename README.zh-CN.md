@@ -30,7 +30,7 @@ Claude Code 平时用 Grep 和 LSP 找代码，前提是知道名字。semsearch
 - **Python 3.12** 和 [uv](https://docs.astral.sh/uv/)。
 - **推荐 NVIDIA 显卡**：没有显卡会退回 CPU，能用但慢很多。
 - **PyTorch**：Windows 和 Linux 上，`pyproject.toml` 安装 CUDA 13.0 版（`pytorch-cu130`），需要 580 及以上版本的 NVIDIA 驱动，驱动太旧时会静默退回 CPU（`semsearch doctor` 能检查出来）。要用其他 CUDA 版本或纯 CPU，改 `[tool.uv.sources]` / `[[tool.uv.index]]`。macOS 使用 PyPI 上的普通版本。
-- **系统**：在 Windows 11 上开发和测试。代码本身跨平台，Linux 和 macOS 尚未测试。
+- **系统**：在带 NVIDIA 显卡的 Windows 11 上开发。CI 在 Windows、Linux、macOS 上跑测试，并在每个系统上用一键安装脚本安装后实际搜索一次（仅 CPU）。用 GPU 建索引只在 Windows 上测试过。
 - **模型**：`google/embeddinggemma-2`（1.5 GB）在第一次使用时从 Hugging Face 下载，也可以先用 `semsearch download-model` 提前下载（会先询问）。
 
 ## 安装
@@ -43,7 +43,7 @@ macOS / Linux：
 ```bash
 curl -LsSf https://github.com/spardanviro/semsearch/releases/latest/download/install.sh | sh
 ```
-脚本会依次：没有 [uv](https://docs.astral.sh/uv/) 时安装 uv；按 `uv.lock` 锁定的依赖版本安装 semsearch；运行 `semsearch doctor` 检查环境；询问是否下载模型；最后运行 `semsearch install-claude` 注册到 Claude Code。每次下载、每处改动都会先询问。需要约 5 GB 磁盘空间（PyTorch 约 3.5 GB，模型 1.5 GB）。Windows 脚本在 Windows 11 上测试过；`install.sh` 目前只在 Windows 的 Git Bash 里跑过。
+脚本会依次：没有 [uv](https://docs.astral.sh/uv/) 时安装 uv；按 `uv.lock` 锁定的依赖版本安装 semsearch；运行 `semsearch doctor` 检查环境；询问是否下载模型；最后运行 `semsearch install-claude` 注册到 Claude Code。每次下载、每处改动都会先询问。需要约 5 GB 磁盘空间（PyTorch 约 3.5 GB，模型 1.5 GB）。CI 会在干净的 Windows、Linux、macOS 机器上运行这两个脚本。
 
 可用环境变量调整：`SEMSEARCH_INSTALL_REF`（分支、标签或提交，默认是脚本所属的 release 版本）、`SEMSEARCH_INSTALL_SOURCE`（从本地目录安装）、`SEMSEARCH_INSTALL_YES=1`（所有询问都回答"是"）。
 

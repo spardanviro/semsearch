@@ -57,8 +57,9 @@ Speed (RTX 3060 6 GB):
   PyTorch (`pytorch-cu130`), which needs NVIDIA driver 580 or newer. With an older driver the
   model silently falls back to the CPU (`semsearch doctor` detects this). For another CUDA version, or for CPU only, change
   `[tool.uv.sources]` / `[[tool.uv.index]]`. macOS uses the regular PyPI build.
-- **Platform:** developed and tested on Windows 11. The code is cross-platform, but Linux and
-  macOS have not been tested yet.
+- **Platform:** developed on Windows 11 with an NVIDIA GPU. CI runs the tests on Windows, Linux
+  and macOS, and installs with the one-line installer and searches on each of them (CPU only).
+  GPU indexing has only been tested on Windows.
 - **Model download:** the model, `google/embeddinggemma-2` (1.5 GB), is downloaded from
   Hugging Face on first use, or ahead of time with `semsearch download-model`, which asks first.
 
@@ -81,8 +82,8 @@ curl -LsSf https://github.com/spardanviro/semsearch/releases/latest/download/ins
 The script installs [uv](https://docs.astral.sh/uv/) if it is missing, installs semsearch with
 every dependency pinned to `uv.lock`, runs `semsearch doctor`, offers to download the model,
 and finally runs `semsearch install-claude`. Each download and each change to your setup asks
-first. It needs about 5 GB of disk (PyTorch about 3.5 GB, the model 1.5 GB). The Windows script
-has been tested on Windows 11; `install.sh` so far only under Git Bash on Windows.
+first. It needs about 5 GB of disk (PyTorch about 3.5 GB, the model 1.5 GB). CI runs both
+scripts on clean Windows, Linux and macOS machines.
 
 Options, as environment variables: `SEMSEARCH_INSTALL_REF` (branch, tag or commit; default:
 the release the script came from), `SEMSEARCH_INSTALL_SOURCE` (a local folder to install from) and

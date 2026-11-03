@@ -95,6 +95,19 @@
 | 请求体没有大小上限、没有频率限制 | 请求体上限 1 MB（看 Content-Length，分块上传时边读边计），超出返回 413；同时处理的连接最多 32 个，超出返回 503；令牌桶限速每秒 20 次、可突发 100 次，超出返回 429 并带 Retry-After。限速只统计持有 token 的请求，`/health` 不限速。客户端遇到 429/503 会按 Retry-After 等待后重试，等待不超过 5 秒且不超过本次请求的超时 |
 | 文本里出现模型的控制标记（如 `<\|image\|>`、`<bos>`）时，EmbeddingGemma 2 把 `<\|image\|>` 当作图片占位符而报错，该块没有向量，只能靠关键词检索找到（本仓库有 5 个文件受影响）| 查询和文档文本交给模型前，在分词器的每个特殊标记的第一个字符后插入零宽空格，让它按普通字符处理；存储的块文本和预览不变。媒体输入（PDF 页面需要真的 `<\|image\|>`）不经过这一步。标记列表取自已加载模型自带的分词器，不额外加载。本仓库评测分数不变，索引不再逐个重试，用时 53 秒 → 33 秒。**已有索引里这些块要完整重建一次才会补上向量**（文件不变时不会重试）|
 
+## 批次 6：CI 在三个系统上发现的问题（2026-11-03）
+
+新增 GitHub Actions：在 Windows、Linux、macOS 上跑 lint、类型检查和测试；另在每个系统的干净机器上运行一键安装脚本（装 uv、semsearch、模型，注册 Claude Code），再用真实模型在 CPU 上为一个小项目建索引并检验两条搜索。首轮运行发现下面这些问题，修复后全部通过，共 348 个测试。
+
+| 问题 | 修复 |
+|---|---|
+| 没有 NVIDIA 驱动的 Windows 机器上，第一次向量化就让 daemon 崩溃（无 Python 报错，重启后重复）：transformers 每次推理都调用 `torch.cuda.is_current_stream_capturing()`，CUDA 版 torch 在没有驱动时在这里崩溃 | 模型在 CPU 上运行时，这个检查直接返回 False（CPU 上不存在 CUDA 图捕获）|
+| daemon 一个线程加载模型、另一个线程统计 token，两边同时导入 transformers；在慢机器上其中一边拿到初始化一半的模块（`cannot import name 'AutoTokenizer'`）| torch / transformers 的导入共用一把锁；daemon 启用 faulthandler，原生代码崩溃时把线程堆栈写进日志 |
+| 没有 uv 的 Linux/macOS 上 `install.sh` 装不了 uv：`curl … \| sh </dev/null` 中的重定向替换了管道，sh 执行的是空脚本 | uv 安装脚本先下载到文件再执行；测试禁止这种写法 |
+| Windows 上 `make_private` 只替换当前用户的条目：文件夹自带的条目（SYSTEM、Administrators、OWNER RIGHTS）和目录里文件自带的条目都留了下来 | 先清掉文件夹自带的条目再设置只属于当前用户的条目，目录里的文件重置为只继承这一条；测试在文件夹和文件上各加一条自带条目后检查 |
+| macOS 内核接受但不执行 `RLIMIT_AS`，媒体子进程在 macOS 上没有内存上限 | 无法在进程内补上，记为已知限制（见下）|
+| post-commit hook 提示"要重开 Claude Code 会话" | 实际不需要，改为说明 daemon 在下次搜索时加载新代码；失败时提示 Windows 上的文件占用原因 |
+
 ## 仍然存在的限制
 
 | 问题 | 风险 | 现状 |
