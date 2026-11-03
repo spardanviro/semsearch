@@ -134,8 +134,9 @@ def test_make_private_leaves_only_the_current_user(tmp_path: Path) -> None:
     acl = subprocess.run(["icacls", str(folder / "sub" / "token.txt")], capture_output=True,
                          text=True, check=True).stdout
     principals = [ln.split(":(")[0].split()[-1] for ln in acl.splitlines()[:-2] if ":(" in ln]
+    folder_acl = subprocess.run(["icacls", str(folder)], capture_output=True, text=True).stdout
     assert principals and all(p.lower().endswith(os.environ["USERNAME"].lower())
-                              for p in principals)
+                              for p in principals), f"file:\n{acl}\nfolder:\n{folder_acl}"
 
 
 # --- output to Claude ------------------------------------------------------------------------
