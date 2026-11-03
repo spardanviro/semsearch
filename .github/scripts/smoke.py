@@ -47,7 +47,9 @@ CASES = {
 
 
 def semsearch(exe: str, *args: str) -> dict:
-    out = subprocess.run([exe, *args, "--json"], check=True, capture_output=True, text=True)
+    out = subprocess.run([exe, *args, "--json"], capture_output=True, text=True)
+    if out.returncode != 0:
+        sys.exit(f"`semsearch {' '.join(args)}` exited {out.returncode}:\n{out.stderr}")
     return json.loads(out.stdout)
 
 

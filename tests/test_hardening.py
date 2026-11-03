@@ -84,6 +84,8 @@ def test_worker_reports_a_corrupt_file_and_keeps_running(tmp_path: Path) -> None
     assert proc is not None and proc.poll() is not None    # closed with the decoder
 
 
+@pytest.mark.skipif(sys.platform == "darwin",
+                    reason="macOS accepts RLIMIT_AS but does not enforce it (documented limit)")
 def test_worker_limits_its_memory_and_cannot_start_processes(tmp_path: Path) -> None:
     code = textwrap.dedent("""
         import subprocess, sys

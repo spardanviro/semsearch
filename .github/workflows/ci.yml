@@ -61,3 +61,7 @@ jobs:
           bin=$(uv tool dir --bin)
           "$bin/semsearch" doctor --offline || true
           uv run --no-project --python 3.12 .github/scripts/smoke.py "$bin/semsearch"
+      - name: Daemon logs
+        if: failure()
+        shell: bash
+        run: tail -n 60 ~/.cache/semsearch/logs/* || true

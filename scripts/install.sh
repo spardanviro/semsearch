@@ -50,6 +50,10 @@ printf 'semsearch installer: local semantic code search for Claude Code\n'
 note 'Needs about 5 GB of disk on Linux (PyTorch about 3.5 GB, the model about 1.5 GB).'
 note 'An NVIDIA GPU with driver 580 or newer makes indexing much faster (optional).'
 
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+trap 'exit 130' INT TERM      # sh continues after a trap handler returns: stop instead
+
 # --- 1. uv -----------------------------------------------------------------------------
 step 'Checking uv'
 if ! command -v uv >/dev/null 2>&1; then
@@ -58,17 +62,15 @@ if ! command -v uv >/dev/null 2>&1; then
         || { note 'Stopped. Install uv yourself (https://docs.astral.sh/uv/) and run this again.'; exit 1; }
     command -v curl >/dev/null 2>&1 || fail 'curl is needed to download uv'
     # PATH in the shell profile is changed below, and only after asking
-    curl -LsSf https://astral.sh/uv/install.sh | UV_NO_MODIFY_PATH=1 sh </dev/null \
-        || fail 'the uv installer failed'
+    # saved to a file first: piping it into sh with stdin from /dev/null would run nothing
+    curl -LsSf https://astral.sh/uv/install.sh -o "$tmp/uv-install.sh" </dev/null \
+        || fail 'cannot download the uv installer'
+    UV_NO_MODIFY_PATH=1 sh "$tmp/uv-install.sh" </dev/null || fail 'the uv installer failed'
     PATH="$HOME/.local/bin:$PATH"
     command -v uv >/dev/null 2>&1 \
         || fail 'uv was installed but cannot be found; open a new terminal and run this again'
 fi
 note "$(uv --version </dev/null)"
-
-tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT
-trap 'exit 130' INT TERM      # sh continues after a trap handler returns: stop instead
 
 # --- 2. semsearch ----------------------------------------------------------------------
 step 'Installing semsearch'

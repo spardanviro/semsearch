@@ -129,7 +129,7 @@ class Embedder(Protocol):
 | 视频（阶段 3） | 20 秒一段，每秒 1 帧；启用音频时同段声音一起编码 |
 
 - tree-sitter 识别的特殊名字：PowerShell 函数、JS 箭头函数赋值、Go/Rust 的方法与 impl。语法树最多下钻 30 层容器，再深就按行窗口处理。
-- 媒体文件的分段和解码在子进程 `index/media_worker.py` 里进行：内存上限 2 GB，每次调用限时 120 秒，Windows 上禁止再启动进程。子进程只回传 JSON 和不经 pickle 的 numpy 数组，daemon 检查后再拼成模型输入（`media.assemble`）。子进程在每次增量更新开始时启动、结束时退出。
+- 媒体文件的分段和解码在子进程 `index/media_worker.py` 里进行：内存上限 2 GB（macOS 内核不执行 `RLIMIT_AS`，那里没有这个上限），每次调用限时 120 秒，Windows 上禁止再启动进程。子进程只回传 JSON 和不经 pickle 的 numpy 数组，daemon 检查后再拼成模型输入（`media.assemble`）。子进程在每次增量更新开始时启动、结束时退出。
 - 某种语言的解析器加载失败（例如首次下载时离线）时先退回行窗口，300 秒后重试。
 
 - 嵌入文本加头部，提升检索质量：

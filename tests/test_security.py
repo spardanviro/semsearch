@@ -126,6 +126,9 @@ def test_make_private_leaves_only_the_current_user(tmp_path: Path) -> None:
     folder = tmp_path / "private"
     (folder / "sub").mkdir(parents=True)
     (folder / "sub" / "token.txt").write_text("secret", encoding="utf-8")
+    # an entry of the file's own survives a parent ACL change (seen on CI runners)
+    subprocess.run(["icacls", str(folder / "sub" / "token.txt"), "/grant", "*S-1-5-18:F", "/Q"],
+                   capture_output=True, check=True)
 
     assert make_private(folder)
     acl = subprocess.run(["icacls", str(folder / "sub" / "token.txt")], capture_output=True,

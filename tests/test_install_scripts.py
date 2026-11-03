@@ -28,6 +28,14 @@ def test_install_scripts_never_exit_the_callers_powershell() -> None:
     assert not re.search(r"^\s*exit\b", ps1, re.M)
 
 
+def test_install_sh_never_pipes_a_script_into_sh_with_stdin_redirected() -> None:
+    # `curl ... | sh </dev/null` runs an empty script: the redirect replaces the pipe. This hid
+    # a broken uv install on machines without uv until CI ran on a clean Linux runner
+    sh = (SCRIPTS / "install.sh").read_text(encoding="utf-8")
+
+    assert not re.search(r"\|[^|\n]*\bsh\b[^\n]*</dev/null", sh)
+
+
 @pytest.mark.skipif(shutil.which("sh") is None, reason="needs a POSIX sh")
 def test_release_assets_pin_the_tag(tmp_path: Path) -> None:
     out = tmp_path / "release"

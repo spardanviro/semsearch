@@ -23,7 +23,6 @@ import io
 import json
 import logging
 import math
-import os
 import queue
 import subprocess
 import sys
@@ -347,7 +346,7 @@ class MediaDecoder:
 
 # --- the child side --------------------------------------------------------------------------
 def _limit_memory(limit: int) -> None:
-    if os.name == "nt":
+    if sys.platform == "win32":
         _windows_job(limit)
         return
     try:
@@ -362,6 +361,7 @@ def _limit_memory(limit: int) -> None:
 def _windows_job(limit: int) -> None:
     """Put this process in a job object: memory capped, no child processes, and an unhandled
     exception kills it instead of opening a crash dialog that would hang it."""
+    assert sys.platform == "win32"   # also tells type checkers on other systems to skip the rest
     import ctypes
     from ctypes import wintypes
 

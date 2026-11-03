@@ -302,7 +302,8 @@ PostToolUse hook ────────────┘                        
   token, indexes and logs) is made readable by the current user only; on Windows this is done
   with an explicit ACL. Request bodies are capped at 1 MB and requests are rate-limited.
 - **Media files:** images, PDFs, audio and video are decoded in a separate worker process with
-  a memory cap and a time limit (on Windows it may not start other processes). A file that
+  a memory cap and a time limit (on Windows it may not start other processes; macOS ignores
+  the memory cap). A file that
   crashes or hangs it only loses its own chunks. The worker runs as your user, so it is a
   damage limit, not a full sandbox.
 

@@ -13,6 +13,7 @@ from pathlib import Path
 
 log = logging.getLogger(__name__)
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+ICACLS_TIMEOUT_S = 60   # /T walks every index file
 
 
 def _windows_user() -> str:
@@ -34,14 +35,22 @@ def make_private(folder: Path) -> bool:
             log.warning("cannot restrict %s: USERNAME is not set", folder)
             return False
         # /inheritance:r drops inherited entries; children inherit the new owner-only entry
-        proc = subprocess.run(
-            ["icacls", str(folder), "/inheritance:r", "/grant:r", f"{user}:(OI)(CI)F", "/Q"],
-            capture_output=True, timeout=30, stdin=subprocess.DEVNULL, creationflags=NO_WINDOW)
-        if proc.returncode != 0:
-            log.warning("cannot restrict %s: icacls exited %s: %s", folder, proc.returncode,
-                        proc.stdout.decode("utf-8", "replace")[-300:])
+        if not _icacls(folder, [str(folder), "/inheritance:r", "/grant:r", f"{user}:(OI)(CI)F"]):
             return False
+        # files already inside may carry entries of their own (made by other tools, or before
+        # this folder was restricted): reset them to inherit only the owner-only entry
+        if any(folder.iterdir()):
+            return _icacls(folder, [str(folder / "*"), "/reset", "/T", "/C"])
         return True
     except (OSError, subprocess.TimeoutExpired) as exc:
         log.warning("cannot restrict %s: %s", folder, exc)
         return False
+
+
+def _icacls(folder: Path, args: list[str]) -> bool:
+    proc = subprocess.run(["icacls", *args, "/Q"], capture_output=True, timeout=ICACLS_TIMEOUT_S,
+                          stdin=subprocess.DEVNULL, creationflags=NO_WINDOW)
+    if proc.returncode != 0:
+        log.warning("cannot restrict %s: icacls exited %s: %s", folder, proc.returncode,
+                    proc.stdout.decode("utf-8", "replace")[-300:])
+    return proc.returncode == 0
