@@ -69,13 +69,13 @@ Speed (RTX 3060 6 GB):
 Windows (PowerShell):
 
 ```powershell
-powershell -ExecutionPolicy ByPass -c "irm https://github.com/spardanviro/SearchEngine/releases/latest/download/install.ps1 | iex"
+powershell -ExecutionPolicy ByPass -c "irm https://github.com/spardanviro/semsearch/releases/latest/download/install.ps1 | iex"
 ```
 
 macOS / Linux:
 
 ```bash
-curl -LsSf https://github.com/spardanviro/SearchEngine/releases/latest/download/install.sh | sh
+curl -LsSf https://github.com/spardanviro/semsearch/releases/latest/download/install.sh | sh
 ```
 
 The script installs [uv](https://docs.astral.sh/uv/) if it is missing, installs semsearch with
@@ -91,8 +91,8 @@ the release the script came from), `SEMSEARCH_INSTALL_SOURCE` (a local folder to
 ### Manual install
 
 ```bash
-git clone https://github.com/spardanviro/SearchEngine.git
-cd SearchEngine
+git clone https://github.com/spardanviro/semsearch.git
+cd semsearch
 uv tool install . --python 3.12
 semsearch install-claude --dry-run   # show what would change
 semsearch install-claude             # register with Claude Code (asks first)

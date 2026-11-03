@@ -1,6 +1,6 @@
 # semsearch installer for Windows (Windows PowerShell 5.1 or PowerShell 7).
 #
-#   powershell -ExecutionPolicy ByPass -c "irm https://github.com/spardanviro/SearchEngine/releases/latest/download/install.ps1 | iex"
+#   powershell -ExecutionPolicy ByPass -c "irm https://github.com/spardanviro/semsearch/releases/latest/download/install.ps1 | iex"
 #
 # or, from a clone:  powershell -ExecutionPolicy ByPass -File scripts\install.ps1
 #
@@ -23,7 +23,7 @@ function Install-Semsearch {
     # exit code instead, and cmdlets that must not fail say -ErrorAction Stop.
     $ErrorActionPreference = 'Continue'
     $ProgressPreference = 'SilentlyContinue'    # Invoke-WebRequest is very slow with progress
-    $repo = 'spardanviro/SearchEngine'
+    $repo = 'spardanviro/semsearch'
     $defaultRef = 'main'   # DEFAULT_REF: a release's copy of this script names its own tag
     $ref = if ($env:SEMSEARCH_INSTALL_REF) { $env:SEMSEARCH_INSTALL_REF } else { $defaultRef }
     $autoYes = $env:SEMSEARCH_INSTALL_YES -eq '1'

@@ -338,7 +338,7 @@ CLI 也可单独使用：`semsearch search "限流重试"`、`semsearch status`�
 ## 6. 项目结构
 
 ```
-SearchEngine/
+semsearch/
 ├─ pyproject.toml / uv.lock
 ├─ .githooks/post-commit     # 提交后从 HEAD 快照重装 uv tool，并停掉旧 daemon
 ├─ scripts/                  # install.ps1 / install.sh：一键安装

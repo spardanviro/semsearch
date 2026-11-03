@@ -37,11 +37,11 @@ Claude Code 平时用 Grep 和 LSP 找代码，前提是知道名字。semsearch
 ### 一键安装（推荐）
 Windows（PowerShell）：
 ```powershell
-powershell -ExecutionPolicy ByPass -c "irm https://github.com/spardanviro/SearchEngine/releases/latest/download/install.ps1 | iex"
+powershell -ExecutionPolicy ByPass -c "irm https://github.com/spardanviro/semsearch/releases/latest/download/install.ps1 | iex"
 ```
 macOS / Linux：
 ```bash
-curl -LsSf https://github.com/spardanviro/SearchEngine/releases/latest/download/install.sh | sh
+curl -LsSf https://github.com/spardanviro/semsearch/releases/latest/download/install.sh | sh
 ```
 脚本会依次：没有 [uv](https://docs.astral.sh/uv/) 时安装 uv；按 `uv.lock` 锁定的依赖版本安装 semsearch；运行 `semsearch doctor` 检查环境；询问是否下载模型；最后运行 `semsearch install-claude` 注册到 Claude Code。每次下载、每处改动都会先询问。需要约 5 GB 磁盘空间（PyTorch 约 3.5 GB，模型 1.5 GB）。Windows 脚本在 Windows 11 上测试过；`install.sh` 目前只在 Windows 的 Git Bash 里跑过。
 
@@ -49,8 +49,8 @@ curl -LsSf https://github.com/spardanviro/SearchEngine/releases/latest/download/
 
 ### 手动安装
 ```bash
-git clone https://github.com/spardanviro/SearchEngine.git
-cd SearchEngine
+git clone https://github.com/spardanviro/semsearch.git
+cd semsearch
 uv tool install . --python 3.12
 semsearch install-claude --dry-run   # 先看会改哪些地方
 semsearch install-claude             # 注册到 Claude Code（执行前会确认）

@@ -1,7 +1,7 @@
 #!/bin/sh
 # semsearch installer for macOS and Linux.
 #
-#   curl -LsSf https://github.com/spardanviro/SearchEngine/releases/latest/download/install.sh | sh
+#   curl -LsSf https://github.com/spardanviro/semsearch/releases/latest/download/install.sh | sh
 #
 # or, from a clone:  sh scripts/install.sh
 #
@@ -17,7 +17,7 @@
 #              SEMSEARCH_INSTALL_YES=1   answer yes to every question
 set -eu
 
-REPO=spardanviro/SearchEngine
+REPO=spardanviro/semsearch
 DEFAULT_REF=main   # DEFAULT_REF: a release's copy of this script names its own tag
 REF=${SEMSEARCH_INSTALL_REF:-$DEFAULT_REF}
 YES=${SEMSEARCH_INSTALL_YES:-}

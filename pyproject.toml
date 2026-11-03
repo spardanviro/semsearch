@@ -31,7 +31,7 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/spardanviro/SearchEngine"
+Homepage = "https://github.com/spardanviro/semsearch"
 
 [project.scripts]
 semsearch = "semsearch.cli:main"
