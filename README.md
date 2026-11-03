@@ -28,17 +28,17 @@ similar to this snippet". It adds to Grep and LSP and replaces neither.
 | Benchmark | Questions | MRR | Answer in top 5 |
 |---|---|---|---|
 | 6 private game-modding projects (C#, TS, GDScript, PowerShell, JS; up to 60k chunks) | 72 | 0.83 | 96% |
-| A public C# mod and this repository (`evals/cases/`) | 54 | 0.73 | 85% |
+| A public C# mod and this repository (`evals/cases/`) | 54 | 0.79 | 91% |
 
 - **Who wrote the questions:** for the 72-question set, agents that had not seen the
   implementation, with every expected answer checked against the source. Those cases stay on
   the author's machine because the projects are private. The 54-question set is in this repo;
   it was written by the developer, so it may be easier than real use. Its questions about this
-  repository drift as the code changes (0.76 before the November 2026 audit, see
-  [docs/AUDIT.md](docs/AUDIT.md)).
+  repository drift as the code changes, so their expected answers are updated when code
+  moves (see [docs/AUDIT.md](docs/AUDIT.md)).
 - **How they were asked:** the way Claude asks in practice: a non-English question is
   translated to English first. The scores are for the hybrid mode; pure vector, the default,
-  is within 0.01 MRR.
+  is within 0.01 MRR on the 72-question set and 0.03 lower on the 54-question set.
 - **Details:** the full methodology and every experiment are in
   [docs/EVAL_REAL_PROJECTS.md](docs/EVAL_REAL_PROJECTS.md) and
   [docs/PHASE1_5.md](docs/PHASE1_5.md). Those docs are in Chinese.
