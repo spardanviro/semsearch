@@ -26,6 +26,13 @@ GEMMA_PROMPTS = {"query": "SearchQuery", "document": "Document"}
 ZERO_WIDTH_SPACE = "​"
 
 
+# one thread at a time imports torch / transformers: the daemon loads the model in one thread
+# while the indexer counts tokens in another, and two threads importing these packages at once
+# can be handed a half-initialised module ("cannot import name 'AutoTokenizer' from
+# 'transformers'", seen on a slow Windows CI runner)
+_IMPORT_LOCK = threading.Lock()
+
+
 def is_embeddinggemma(model: str) -> bool:
     return "embeddinggemma" in model.lower()
 
@@ -67,7 +74,8 @@ class SentenceTransformerEmbedder:
     # --- lazy loading ---------------------------------------------------------------------
     def _tok(self) -> Any:
         if self._tokenizer is None:
-            from transformers import AutoTokenizer
+            with _IMPORT_LOCK:
+                from transformers import AutoTokenizer
             self._tokenizer = AutoTokenizer.from_pretrained(
                 self.model_id, revision=self.settings.revision,
                 trust_remote_code=self.settings.trust_remote_code)
@@ -75,8 +83,9 @@ class SentenceTransformerEmbedder:
 
     def _load(self) -> Any:
         if self._model is None:
-            import torch
-            from sentence_transformers import SentenceTransformer
+            with _IMPORT_LOCK:
+                import torch
+                from sentence_transformers import SentenceTransformer
             device = "cuda" if torch.cuda.is_available() else "cpu"
             dtype = torch.bfloat16 if device == "cuda" else torch.float32
             extra: dict[str, Any] = {}
@@ -230,7 +239,8 @@ class SentenceTransformerEmbedder:
         return self._encode_batch(items, media=True)
 
     def _encode_batch(self, inputs: list[Any], media: bool = False) -> np.ndarray:
-        import torch
+        with _IMPORT_LOCK:
+            import torch
         with self._lock:
             model = self._load()
             prompt = {} if media else {"prompt": self._prompt(1)}

@@ -121,22 +121,29 @@ def test_non_ascii_authorization_header_is_401_not_500(tmp_path: Path) -> None:
     assert r.status_code == 401
 
 
+def _principals(path: Path) -> list[str]:
+    acl = subprocess.run(["icacls", str(path)], capture_output=True, text=True, check=True).stdout
+    return [ln.split(":(")[0].split()[-1] for ln in acl.splitlines()[:-2] if ":(" in ln]
+
+
 @pytest.mark.skipif(os.name != "nt", reason="Windows ACLs")
 def test_make_private_leaves_only_the_current_user(tmp_path: Path) -> None:
     folder = tmp_path / "private"
+    token = folder / "sub" / "token.txt"
     (folder / "sub").mkdir(parents=True)
-    (folder / "sub" / "token.txt").write_text("secret", encoding="utf-8")
-    # an entry of the file's own survives a parent ACL change (seen on CI runners)
-    subprocess.run(["icacls", str(folder / "sub" / "token.txt"), "/grant", "*S-1-5-18:F", "/Q"],
+    token.write_text("secret", encoding="utf-8")
+    # entries of their own (not inherited) on the folder and on a file inside it, as on CI
+    # runners: a plain ACL change on the folder leaves both in place
+    subprocess.run(["icacls", str(folder), "/grant", "*S-1-5-18:(OI)(CI)F", "/Q"],
+                   capture_output=True, check=True)
+    subprocess.run(["icacls", str(token), "/grant", "*S-1-5-18:F", "/Q"],
                    capture_output=True, check=True)
 
     assert make_private(folder)
-    acl = subprocess.run(["icacls", str(folder / "sub" / "token.txt")], capture_output=True,
-                         text=True, check=True).stdout
-    principals = [ln.split(":(")[0].split()[-1] for ln in acl.splitlines()[:-2] if ":(" in ln]
-    folder_acl = subprocess.run(["icacls", str(folder)], capture_output=True, text=True).stdout
-    assert principals and all(p.lower().endswith(os.environ["USERNAME"].lower())
-                              for p in principals), f"file:\n{acl}\nfolder:\n{folder_acl}"
+    user = os.environ["USERNAME"].lower()
+    for path in (folder, token):
+        principals = _principals(path)
+        assert principals and all(p.lower().endswith(user) for p in principals), (path, principals)
 
 
 # --- output to Claude ------------------------------------------------------------------------

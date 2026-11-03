@@ -1,6 +1,7 @@
 """Daemon entry point: `python -m semsearch.daemon` (normally started by the client)."""
 from __future__ import annotations
 
+import faulthandler
 import json
 import logging
 import os
@@ -80,6 +81,9 @@ def warm_up(state: DaemonState) -> None:
 
 
 def main() -> None:
+    # a crash inside torch or a tokenizer leaves no Python traceback: this writes the thread
+    # stacks to stderr, which the client sends to the daemon's stdout log
+    faulthandler.enable()
     settings = Settings()
     make_private(settings.home)    # before the token file and indexes are (re)written
     setup_logging(settings)

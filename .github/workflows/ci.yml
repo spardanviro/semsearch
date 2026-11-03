@@ -66,8 +66,4 @@ jobs:
         shell: bash
         run: |
           grep -n "Traceback\|Error\|daemon pid\|exit" ~/.cache/semsearch/logs/daemon.log | head -n 80 || true
-          tail -n 30 ~/.cache/semsearch/logs/daemon.stdout.log || true
-          py=$(uv tool dir)/semsearch/Scripts/python
-          [ -x "$py.exe" ] || py=$(uv tool dir)/semsearch/bin/python
-          "$py" -I -c "import transformers.models.auto.tokenization_auto" || true
-          "$py" -I -c "from transformers import AutoTokenizer; print('AutoTokenizer ok')" || true
+          grep -v "Loading weights\|Batches" ~/.cache/semsearch/logs/daemon.stdout.log | tail -n 60 || true

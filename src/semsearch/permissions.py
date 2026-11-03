@@ -34,8 +34,11 @@ def make_private(folder: Path) -> bool:
         if not user:
             log.warning("cannot restrict %s: USERNAME is not set", folder)
             return False
-        # /inheritance:r drops inherited entries; children inherit the new owner-only entry
-        if not _icacls(folder, [str(folder), "/inheritance:r", "/grant:r", f"{user}:(OI)(CI)F"]):
+        # /reset drops the folder's own entries (other users, SYSTEM, ...), /inheritance:r the
+        # inherited ones; children inherit the single owner-only entry granted here
+        if not (_icacls(folder, [str(folder), "/reset"])
+                and _icacls(folder, [str(folder), "/inheritance:r",
+                                     "/grant:r", f"{user}:(OI)(CI)F"])):
             return False
         # files already inside may carry entries of their own (made by other tools, or before
         # this folder was restricted): reset them to inherit only the owner-only entry
