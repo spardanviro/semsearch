@@ -37,15 +37,15 @@ Claude Code 平时用 Grep 和 LSP 找代码，前提是知道名字。semsearch
 ### 一键安装（推荐）
 Windows（PowerShell）：
 ```powershell
-powershell -ExecutionPolicy ByPass -c "irm https://raw.githubusercontent.com/spardanviro/SearchEngine/main/scripts/install.ps1 | iex"
+powershell -ExecutionPolicy ByPass -c "irm https://github.com/spardanviro/SearchEngine/releases/latest/download/install.ps1 | iex"
 ```
 macOS / Linux：
 ```bash
-curl -LsSf https://raw.githubusercontent.com/spardanviro/SearchEngine/main/scripts/install.sh | sh
+curl -LsSf https://github.com/spardanviro/SearchEngine/releases/latest/download/install.sh | sh
 ```
 脚本会依次：没有 [uv](https://docs.astral.sh/uv/) 时安装 uv；按 `uv.lock` 锁定的依赖版本安装 semsearch；运行 `semsearch doctor` 检查环境；询问是否下载模型；最后运行 `semsearch install-claude` 注册到 Claude Code。每次下载、每处改动都会先询问。需要约 5 GB 磁盘空间（PyTorch 约 3.5 GB，模型 1.5 GB）。Windows 脚本在 Windows 11 上测试过；`install.sh` 目前只在 Windows 的 Git Bash 里跑过。
 
-可用环境变量调整：`SEMSEARCH_INSTALL_REF`（分支、标签或提交，默认 `main`）、`SEMSEARCH_INSTALL_SOURCE`（从本地目录安装）、`SEMSEARCH_INSTALL_YES=1`（所有询问都回答"是"）。
+可用环境变量调整：`SEMSEARCH_INSTALL_REF`（分支、标签或提交，默认是脚本所属的 release 版本）、`SEMSEARCH_INSTALL_SOURCE`（从本地目录安装）、`SEMSEARCH_INSTALL_YES=1`（所有询问都回答"是"）。
 
 ### 手动安装
 ```bash
@@ -210,6 +210,7 @@ uv run pyright src tests evals
 - **提交后自动同步**：提交改动了 `src/`、`pyproject.toml` 或 `uv.lock` 时，post-commit hook 会从 `HEAD` 的快照重新安装 uv tool 里的副本，依赖版本按 `uv.lock` 锁定，未提交的改动不会进入 Claude Code。
 - **不会自动同步的情况**：pull、checkout、rebase 不会触发这个 hook，之后要手动执行 `uv tool install . --python 3.12 --reinstall`。
 - **跳过一次同步**：`SEMSEARCH_SKIP_SYNC=1 git commit ...`。
+- **发布版本**：一键安装命令下载的是最新 GitHub release 附带的安装脚本。用 `sh scripts/release-assets.sh v1.2.3 dist/release` 生成这两个文件，其中安装的版本固定为该标签（仓库里的脚本装的是 `main`）；再用 `gh release create v1.2.3 dist/release/install.ps1 dist/release/install.sh` 附到 release 上。
 
 评测：
 ```bash

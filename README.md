@@ -69,13 +69,13 @@ Speed (RTX 3060 6 GB):
 Windows (PowerShell):
 
 ```powershell
-powershell -ExecutionPolicy ByPass -c "irm https://raw.githubusercontent.com/spardanviro/SearchEngine/main/scripts/install.ps1 | iex"
+powershell -ExecutionPolicy ByPass -c "irm https://github.com/spardanviro/SearchEngine/releases/latest/download/install.ps1 | iex"
 ```
 
 macOS / Linux:
 
 ```bash
-curl -LsSf https://raw.githubusercontent.com/spardanviro/SearchEngine/main/scripts/install.sh | sh
+curl -LsSf https://github.com/spardanviro/SearchEngine/releases/latest/download/install.sh | sh
 ```
 
 The script installs [uv](https://docs.astral.sh/uv/) if it is missing, installs semsearch with
@@ -84,8 +84,8 @@ and finally runs `semsearch install-claude`. Each download and each change to yo
 first. It needs about 5 GB of disk (PyTorch about 3.5 GB, the model 1.5 GB). The Windows script
 has been tested on Windows 11; `install.sh` so far only under Git Bash on Windows.
 
-Options, as environment variables: `SEMSEARCH_INSTALL_REF` (branch, tag or commit; default
-`main`), `SEMSEARCH_INSTALL_SOURCE` (a local folder to install from) and
+Options, as environment variables: `SEMSEARCH_INSTALL_REF` (branch, tag or commit; default:
+the release the script came from), `SEMSEARCH_INSTALL_SOURCE` (a local folder to install from) and
 `SEMSEARCH_INSTALL_YES=1` (answer yes to every question).
 
 ### Manual install
@@ -326,6 +326,11 @@ uv run pyright src tests evals
   `uv.lock`. Uncommitted edits never reach Claude Code. The hook does not run on pull, checkout
   or rebase; run `uv tool install . --python 3.12 --reinstall` after those. Skip it once with
   `SEMSEARCH_SKIP_SYNC=1 git commit ...`.
+- **Releases:** the one-line install commands download the installers attached to the latest
+  GitHub release. `sh scripts/release-assets.sh v1.2.3 dist/release` makes those copies with
+  the version they install pinned to the tag (the copies in the repository install `main`);
+  attach both files with `gh release create v1.2.3 dist/release/install.ps1
+  dist/release/install.sh`.
 
 Benchmarks:
 

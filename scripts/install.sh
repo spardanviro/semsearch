@@ -1,7 +1,7 @@
 #!/bin/sh
 # semsearch installer for macOS and Linux.
 #
-#   curl -LsSf https://raw.githubusercontent.com/spardanviro/SearchEngine/main/scripts/install.sh | sh
+#   curl -LsSf https://github.com/spardanviro/SearchEngine/releases/latest/download/install.sh | sh
 #
 # or, from a clone:  sh scripts/install.sh
 #
@@ -12,13 +12,14 @@
 #   4. the embedding model, about 1.5 GB (`semsearch download-model`)
 #   5. registration with Claude Code (`semsearch install-claude`)
 #
-# Environment: SEMSEARCH_INSTALL_REF     branch, tag or commit to install (default: main)
+# Environment: SEMSEARCH_INSTALL_REF     branch, tag or commit to install (default: DEFAULT_REF below)
 #              SEMSEARCH_INSTALL_SOURCE  install from this local folder instead of GitHub
 #              SEMSEARCH_INSTALL_YES=1   answer yes to every question
 set -eu
 
 REPO=spardanviro/SearchEngine
-REF=${SEMSEARCH_INSTALL_REF:-main}
+DEFAULT_REF=main   # DEFAULT_REF: a release's copy of this script names its own tag
+REF=${SEMSEARCH_INSTALL_REF:-$DEFAULT_REF}
 YES=${SEMSEARCH_INSTALL_YES:-}
 
 step() { printf '\n==> %s\n' "$1"; }

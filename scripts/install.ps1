@@ -1,6 +1,6 @@
 # semsearch installer for Windows (Windows PowerShell 5.1 or PowerShell 7).
 #
-#   powershell -ExecutionPolicy ByPass -c "irm https://raw.githubusercontent.com/spardanviro/SearchEngine/main/scripts/install.ps1 | iex"
+#   powershell -ExecutionPolicy ByPass -c "irm https://github.com/spardanviro/SearchEngine/releases/latest/download/install.ps1 | iex"
 #
 # or, from a clone:  powershell -ExecutionPolicy ByPass -File scripts\install.ps1
 #
@@ -11,7 +11,7 @@
 #   4. the embedding model, about 1.5 GB (`semsearch download-model`)
 #   5. registration with Claude Code (`semsearch install-claude`)
 #
-# Environment: SEMSEARCH_INSTALL_REF     branch, tag or commit to install (default: main)
+# Environment: SEMSEARCH_INSTALL_REF     branch, tag or commit to install (default: DEFAULT_REF below)
 #              SEMSEARCH_INSTALL_SOURCE  install from this local folder instead of GitHub
 #              SEMSEARCH_INSTALL_YES=1   answer yes to every question
 
@@ -24,7 +24,8 @@ function Install-Semsearch {
     $ErrorActionPreference = 'Continue'
     $ProgressPreference = 'SilentlyContinue'    # Invoke-WebRequest is very slow with progress
     $repo = 'spardanviro/SearchEngine'
-    $ref = if ($env:SEMSEARCH_INSTALL_REF) { $env:SEMSEARCH_INSTALL_REF } else { 'main' }
+    $defaultRef = 'main'   # DEFAULT_REF: a release's copy of this script names its own tag
+    $ref = if ($env:SEMSEARCH_INSTALL_REF) { $env:SEMSEARCH_INSTALL_REF } else { $defaultRef }
     $autoYes = $env:SEMSEARCH_INSTALL_YES -eq '1'
 
     function Write-Step([string]$text) { Write-Host ''; Write-Host "==> $text" -ForegroundColor Cyan }
