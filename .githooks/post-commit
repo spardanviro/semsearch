@@ -29,8 +29,9 @@ fi
 if ! uv tool install "$tmp" --python 3.12 --reinstall-package semsearch \
         --constraints "$tmp/constraints.txt" --quiet; then
     echo "semsearch: tool sync FAILED - run: uv tool install . --python 3.12 --reinstall" >&2
+    echo "  (on Windows a running semsearch-mcp locks the files: stop it first)" >&2
     exit 0   # never fail the commit (post-commit cannot undo it anyway)
 fi
 # restart the daemon so the next search runs the new code (it autostarts on demand)
 semsearch daemon stop >/dev/null 2>&1 || true
-echo "semsearch: tool updated; open a new Claude Code session to reload the MCP server"
+echo "semsearch: tool updated; the daemon restarts with the new code on the next search"

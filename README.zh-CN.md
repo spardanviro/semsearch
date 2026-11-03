@@ -207,6 +207,7 @@ uv run pyright src tests evals
 ```
 - **真实模型测试**：默认跳过，设 `SEMSEARCH_GPU_TESTS=1` 后运行 `uv run pytest -q -m gpu`。
 - **测试隔离**：测试会忽略你自己设置的 `SEMSEARCH_*` 环境变量。
+- **CI**：GitHub Actions 在 Windows、Linux、macOS 上运行上面这些检查；还会在每个系统的干净机器上运行一键安装脚本，再用真实模型在 CPU 上为一个小项目建索引并检验搜索结果（`.github/scripts/smoke.py`）。
 - **提交后自动同步**：提交改动了 `src/`、`pyproject.toml` 或 `uv.lock` 时，post-commit hook 会从 `HEAD` 的快照重新安装 uv tool 里的副本，依赖版本按 `uv.lock` 锁定，未提交的改动不会进入 Claude Code。
 - **不会自动同步的情况**：pull、checkout、rebase 不会触发这个 hook，之后要手动执行 `uv tool install . --python 3.12 --reinstall`。
 - **跳过一次同步**：`SEMSEARCH_SKIP_SYNC=1 git commit ...`。

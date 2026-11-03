@@ -321,6 +321,9 @@ uv run pyright src tests evals
 - **Real-model tests:** they are skipped by default. Set `SEMSEARCH_GPU_TESTS=1` to run them
   (`uv run pytest -q -m gpu`).
 - **Test isolation:** the tests ignore your own `SEMSEARCH_*` variables.
+- **CI:** GitHub Actions runs the checks above on Windows, Linux and macOS. It also runs the
+  one-line installer on a clean machine for each system, then indexes a small project with the
+  real model on the CPU and checks a search (`.github/scripts/smoke.py`).
 - **Post-commit hook:** when a commit touches `src/`, `pyproject.toml` or `uv.lock`, it
   reinstalls the uv tool copy from a snapshot of `HEAD`, with dependencies pinned to
   `uv.lock`. Uncommitted edits never reach Claude Code. The hook does not run on pull, checkout

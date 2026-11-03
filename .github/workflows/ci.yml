@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked
+      - run: uv run ruff check src tests evals .github/scripts
+      - run: uv run pyright src tests evals
+
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked
+      - run: uv run pytest -q
+
+  # The one-line installers end to end on a clean machine: install uv, semsearch and the model,
+  # then index a small project on the CPU and check that a search finds the right file.
+  install:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      SEMSEARCH_INSTALL_YES: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: install.sh
+        if: runner.os != 'Windows'
+        run: sh scripts/install.sh
+      - name: install.ps1 (Windows PowerShell 5.1)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: ./scripts/install.ps1
+      - name: Search with the installed tool
+        shell: bash
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          bin=$(uv tool dir --bin)
+          "$bin/semsearch" doctor --offline || true
+          uv run --no-project --python 3.12 .github/scripts/smoke.py "$bin/semsearch"
