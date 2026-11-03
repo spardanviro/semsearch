@@ -14,10 +14,11 @@ import numpy as np
 
 from semsearch.config import MEDIA_KINDS, MEDIA_VERSION, Settings
 from semsearch.embed.base import Embedder
-from semsearch.index import keywords, media
+from semsearch.index import keywords
 from semsearch.index.chunkers import Chunk, chunk_text
 from semsearch.index.chunkers.base import chunk_body
 from semsearch.index.media import MediaChunk
+from semsearch.index.media_worker import MediaDecoder, MediaWorkerError
 from semsearch.index.scanner import FileInfo, read_text
 from semsearch.index.store import FileRow, NewChunk, Store
 from semsearch.index.vectors import VectorCache
@@ -91,6 +92,20 @@ class Indexer:
         self.embedder = embedder
         self.settings = settings
         self.db_lock = db_lock
+        self._decoder: MediaDecoder | None = None
+
+    @property
+    def decoder(self) -> MediaDecoder:
+        """Media files are parsed in a separate process (index.media_worker), started on first
+        use and stopped at the end of each update."""
+        if self._decoder is None:
+            self._decoder = MediaDecoder(self.settings)
+        return self._decoder
+
+    def close(self) -> None:
+        decoder, self._decoder = self._decoder, None
+        if decoder is not None:
+            decoder.close()
 
     def known_files(self) -> dict[str, FileRow]:
         with self.db_lock:
@@ -106,18 +121,21 @@ class Indexer:
         known = self.known_files()
         pending: list[_Pending] = []
         pending_chunks = 0
-        for done, info in enumerate(changed, 1):
-            item = self._prepare(info, known.get(info.path), stats)
-            if item is not None:
-                pending.append(item)
-                pending_chunks += item.size
-            if pending_chunks >= self.settings.commit_every_chunks:
+        try:
+            for done, info in enumerate(changed, 1):
+                item = self._prepare(info, known.get(info.path), stats)
+                if item is not None:
+                    pending.append(item)
+                    pending_chunks += item.size
+                if pending_chunks >= self.settings.commit_every_chunks:
+                    self._flush(pending, stats)
+                    pending, pending_chunks = [], 0
+                if progress:
+                    progress(done, len(changed))
+            if pending:
                 self._flush(pending, stats)
-                pending, pending_chunks = [], 0
-            if progress:
-                progress(done, len(changed))
-        if pending:
-            self._flush(pending, stats)
+        finally:
+            self.close()      # no idle decoder process between updates
         stats.seconds = round(time.perf_counter() - t0, 3)
         return stats
 
@@ -169,8 +187,8 @@ class Indexer:
             stats.files_unchanged += 1
             return None
         try:
-            chunks = media.segment(path, info.modality, self.settings)
-        except Exception as exc:    # corrupt or unsupported file: remember, do not retry
+            chunks = self.decoder.segment(path, info.modality)
+        except Exception as exc:    # corrupt, unsupported or crashed the decoder: do not retry
             log.warning("cannot read %s %s: %s", info.modality, info.path, exc)
             stats.files_failed += 1
             return _Pending(info, UNREADABLE, [])
@@ -183,10 +201,12 @@ class Indexer:
                      ) -> tuple[dict[str, np.ndarray], set[str]]:
         """Decode and embed media chunks a few at a time. -> (vectors, hashes that failed for
         a transient reason). A chunk that cannot be decoded is skipped for good (that part of
-        the file is broken); its file keeps the other chunks."""
+        the file is broken); its file keeps the other chunks. A file that crashes or hangs
+        the decoder process loses its remaining chunks: they would only do it again."""
         with_audio = "audio" in self.settings.media
         out: dict[str, np.ndarray] = {}
         transient: set[str] = set()
+        poisoned: set[Path] = set()
         by_kind: dict[str, list[tuple[str, Path, MediaChunk]]] = {}
         for h, (path, chunk) in wanted.items():
             by_kind.setdefault(chunk.kind, []).append((h, path, chunk))
@@ -196,13 +216,18 @@ class Indexer:
                 for i in range(0, len(items), size):
                     batch: list[tuple[str, dict[str, Any]]] = []
                     for h, path, chunk in items[i:i + size]:
+                        if path in poisoned:
+                            continue
                         try:
-                            batch.append((h, media.load(path, chunk, with_audio)))
+                            batch.append((h, self.decoder.load(path, chunk, with_audio)))
+                        except MediaWorkerError as exc:
+                            log.warning("skipping the rest of %s: %s", path.name, exc)
+                            poisoned.add(path)
                         except Exception as exc:
                             log.warning("cannot decode %s %s: %s", path.name, chunk.symbol, exc)
                     out.update(self._encode_media_batch(batch, wanted, transient))
         finally:
-            media.release()
+            self.decoder.release()
         return out, transient
 
     def _encode_media_batch(self, batch: list[tuple[str, dict[str, Any]]],

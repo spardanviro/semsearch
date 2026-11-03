@@ -28,6 +28,7 @@ from semsearch.globs import safe_spec
 
 log = logging.getLogger(__name__)
 LIST_TIMEOUT_S = 120
+MAX_GITIGNORE_FILES = 2000   # walk fallback: .gitignore files read per project
 # the daemon has no console: without this every rg/git call would flash a window on Windows
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
@@ -151,21 +152,65 @@ def _run_lister(cmd: list[str], root: Path, sep: str) -> list[str] | None:
     return [p.replace("\\", "/") for p in out.split(sep) if p.strip()]
 
 
+def _ignore_lines(path: Path) -> list[str]:
+    try:
+        return path.read_text(encoding="utf-8", errors="replace").splitlines() \
+            if path.is_file() else []
+    except OSError:
+        return []
+
+
+def _ignored(rules: list[tuple[str, pathspec.PathSpec]], rel: str) -> bool:
+    """gitignore precedence: a deeper .gitignore overrides its parents, and inside one file
+    the last matching pattern wins (so `!keep.log` re-includes)."""
+    verdict: bool | None = None
+    for prefix, spec in rules:
+        result = spec.check_file(rel[len(prefix):]).include
+        if result is not None:
+            verdict = result
+    return bool(verdict)
+
+
+def _prefixes(rel_dir: str) -> list[str]:
+    """"a/b/" -> ["", "a/", "a/b/"]: the directories whose .gitignore applies inside it."""
+    parts = rel_dir.split("/")[:-1] if rel_dir else []
+    return [""] + ["/".join(parts[:i]) + "/" for i in range(1, len(parts) + 1)]
+
+
+def _dir_spec(root: Path, rel_dir: str) -> pathspec.PathSpec:
+    """Rules of one directory's .gitignore; the root also gets .git/info/exclude (first, so
+    the .gitignore wins where both match)."""
+    source = root / rel_dir / ".gitignore"
+    lines = _ignore_lines(source)
+    if not rel_dir:
+        lines = _ignore_lines(root / ".git" / "info" / "exclude") + lines
+    return safe_spec(lines, str(source))
+
+
 def _list_with_walk(root: Path) -> list[str]:
-    gitignore = root / ".gitignore"
-    lines = gitignore.read_text(encoding="utf-8", errors="replace").splitlines() \
-        if gitignore.is_file() else []
-    spec = safe_spec(lines, str(gitignore))
+    """Fallback without git and rg: walk the tree honouring every .gitignore, each relative to
+    its own directory, plus .git/info/exclude (lowest priority)."""
     skip = excluded_dirs(root)
+    specs: dict[str, pathspec.PathSpec] = {"": _dir_spec(root, "")}
+    warned = False
     out: list[str] = []
     for dirpath, dirnames, filenames in os.walk(root):
         rel_dir = Path(dirpath).relative_to(root).as_posix()
         rel_dir = "" if rel_dir == "." else rel_dir + "/"
+        if rel_dir and ".gitignore" in filenames:
+            if len(specs) < MAX_GITIGNORE_FILES:
+                specs[rel_dir] = _dir_spec(root, rel_dir)
+            elif not warned:
+                log.warning("%s: more than %d .gitignore files; deeper ones are not read",
+                            root, MAX_GITIGNORE_FILES)
+                warned = True
+        rules = [(p, specs[p]) for p in _prefixes(rel_dir) if p in specs]
+        # an ignored directory is never entered: git cannot re-include files below it either
         dirnames[:] = [d for d in dirnames
-                       if d.lower() not in skip and not spec.match_file(rel_dir + d + "/")
+                       if d.lower() not in skip and not _ignored(rules, rel_dir + d + "/")
                        and not os.path.isjunction(os.path.join(dirpath, d))
                        and not os.path.islink(os.path.join(dirpath, d))]
-        out.extend(rel_dir + f for f in filenames if not spec.match_file(rel_dir + f))
+        out.extend(rel_dir + f for f in filenames if not _ignored(rules, rel_dir + f))
     return out
 
 
@@ -225,12 +270,18 @@ def is_gitignored(root: Path, rel: str) -> bool:
             return proc.returncode == 0
         except (OSError, subprocess.TimeoutExpired) as exc:
             log.warning("git check-ignore failed for %s: %s", rel, exc)
-    gitignore = root / ".gitignore"
-    if not gitignore.is_file():
-        return False
-    spec = safe_spec(gitignore.read_text(encoding="utf-8", errors="replace").splitlines(),
-                     str(gitignore))
-    return spec.match_file(rel)
+    # without git: the same rules as the walk fallback, checked along the path's directories
+    specs: dict[str, pathspec.PathSpec] = {}
+    parts = rel.split("/")
+    for depth in range(len(parts)):
+        target = "/".join(parts[:depth + 1]) + ("/" if depth < len(parts) - 1 else "")
+        prefixes = _prefixes("/".join(parts[:depth]) + "/" if depth else "")
+        for p in prefixes:
+            if p not in specs:
+                specs[p] = _dir_spec(root, p)
+        if _ignored([(p, specs[p]) for p in prefixes], target):
+            return True
+    return False
 
 
 def stat_one(root: Path, rel: str, settings: Settings) -> FileInfo | None:

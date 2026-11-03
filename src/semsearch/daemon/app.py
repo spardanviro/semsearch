@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 
 from semsearch import __version__
 from semsearch.config import Settings
+from semsearch.daemon.limits import BodyLimit, RateLimiter
 from semsearch.embed.base import Embedder
 from semsearch.index.project import Project
 from semsearch.paths import normalize_root, project_key, refuse_root
@@ -33,6 +34,7 @@ class DaemonState:
     lock: threading.Lock = field(default_factory=threading.Lock)
     opening: dict[str, threading.Lock] = field(default_factory=dict)
     shutdown_requested: threading.Event = field(default_factory=threading.Event)
+    limiter: RateLimiter = field(default_factory=RateLimiter)
 
     def project(self, root: str, create: bool = True) -> Project | None:
         """Open (or reuse) a project. With create=False only projects that already have an
@@ -108,6 +110,7 @@ def create_app(state: DaemonState, allowed_hosts: list[str] | None = None) -> Fa
                   openapi_url=None)
     # defence in depth against DNS rebinding (the bearer token already blocks browsers)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts or LOCAL_HOSTS)
+    app.add_middleware(BodyLimit)
 
     expected = f"Bearer {state.token}".encode()
 
@@ -118,7 +121,15 @@ def create_app(state: DaemonState, allowed_hosts: list[str] | None = None) -> Fa
             raise HTTPException(status_code=401, detail="invalid token")
         state.last_activity = time.monotonic()
 
+    def rate_limited() -> None:
+        # after auth: callers without the token cannot use up the budget of those with it
+        delay = state.limiter.wait()
+        if delay > 0:
+            raise HTTPException(status_code=429, detail="too many requests",
+                                headers={"Retry-After": str(max(1, round(delay)))})
+
     guarded = [Depends(auth)]
+    limited = [Depends(auth), Depends(rate_limited)]
 
     def opened(root: str) -> Project:
         proj = state.project(root)
@@ -132,7 +143,7 @@ def create_app(state: DaemonState, allowed_hosts: list[str] | None = None) -> Fa
                 "uptime_s": round(time.time() - state.started_at, 1),
                 "projects": len(state.projects)}
 
-    @app.post("/search", dependencies=guarded)
+    @app.post("/search", dependencies=limited)
     def search(req: SearchRequest) -> dict[str, object]:
         proj = opened(req.root)
         try:
@@ -148,19 +159,19 @@ def create_app(state: DaemonState, allowed_hosts: list[str] | None = None) -> Fa
                            "and relative to the project root, e.g. src/**, **/*.py, *.cs.")
         return out
 
-    @app.post("/notify", dependencies=guarded)
+    @app.post("/notify", dependencies=limited)
     def notify(req: NotifyRequest) -> dict[str, object]:
         proj = state.project(req.root, create=False)
         if proj is None:
             return {"accepted": [], "indexed": False}
         return {"accepted": proj.notify(req.paths), "indexed": True}
 
-    @app.post("/reindex", dependencies=guarded)
+    @app.post("/reindex", dependencies=limited)
     def reindex(req: ReindexRequest) -> dict[str, object]:
         accepted = opened(req.root).reindex(req.full, req.paths)
         return {"accepted": accepted, "full": req.full}
 
-    @app.post("/status", dependencies=guarded)
+    @app.post("/status", dependencies=limited)
     def status(req: RootRequest) -> dict[str, object]:
         return opened(req.root).status()
 

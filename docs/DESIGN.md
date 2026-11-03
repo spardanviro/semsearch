@@ -74,6 +74,7 @@
 | POST | `/shutdown` | 让 daemon 退出（`semsearch daemon stop`） |
 | GET | `/health` | 存活检查，返回 pid |
 
+- 请求限制（`daemon/limits.py`）：请求体最多 1 MB（413）；最多 32 个并发连接（uvicorn，503）；持有 token 的请求共用一个令牌桶，每秒 20 次、可突发 100 次（429 + Retry-After），`/health` 不限速。客户端遇到 429/503 时按 Retry-After 重试。
 - 请求参数由 pydantic 校验（例如 `k` 为 1–50，`modality` 只能是已知类型）；参数错误返回 400/422，客户端报成 `DaemonRequestError`，不会被当成"daemon 不可用"。
 
 ### 3.2 Embedder（推理后端）
@@ -104,7 +105,7 @@ class Embedder(Protocol):
 - 依赖注意：即使只加载文本部分，也必须安装 Pillow 和 torchvision。
 
 ### 3.3 Scanner（文件发现）
-- 列文件的顺序：`git ls-files -co --exclude-standard`（git 仓库）→ `rg --files --hidden --no-require-git` → 自己遍历目录并用 `pathspec` 读根目录的 `.gitignore`。先用 git 是为了和 hook 的 `git check-ignore` 判断一致，避免已跟踪但被忽略的文件反复增删。
+- 列文件的顺序：`git ls-files -co --exclude-standard`（git 仓库）→ `rg --files --hidden --no-require-git` → 自己遍历目录，用 `pathspec` 按 git 的优先级读取每一级的 `.gitignore` 和 `.git/info/exclude`。先用 git 是为了和 hook 的 `git check-ignore` 判断一致，避免已跟踪但被忽略的文件反复增删。
 - 额外忽略：`.git/`、`node_modules/`、构建产物、锁文件，以及项目根的 `.semsearchignore`。
 - 来自仓库的忽略规则和检索时的 `path_glob` 都是不可信输入：用 RE2 后端匹配（线性时间，防 ReDoS），并限制行数和长度。
 - **默认不索引敏感文件**：`.env*`、`*.pem`、`*.key`、`id_rsa*`、`*.pfx`、`secrets.*` 等（返回给 Claude 的片段会进入上下文）。不区分大小写，`!` 规则不能取消。
@@ -128,6 +129,7 @@ class Embedder(Protocol):
 | 视频（阶段 3） | 20 秒一段，每秒 1 帧；启用音频时同段声音一起编码 |
 
 - tree-sitter 识别的特殊名字：PowerShell 函数、JS 箭头函数赋值、Go/Rust 的方法与 impl。语法树最多下钻 30 层容器，再深就按行窗口处理。
+- 媒体文件的分段和解码在子进程 `index/media_worker.py` 里进行：内存上限 2 GB，每次调用限时 120 秒，Windows 上禁止再启动进程。子进程只回传 JSON 和不经 pickle 的 numpy 数组，daemon 检查后再拼成模型输入（`media.assemble`）。子进程在每次增量更新开始时启动、结束时退出。
 - 某种语言的解析器加载失败（例如首次下载时离线）时先退回行窗口，300 秒后重试。
 
 - 嵌入文本加头部，提升检索质量：
@@ -344,7 +346,8 @@ SearchEngine/
 │  ├─ formatting.py       # 结果转文本、清理不可信内容
 │  ├─ daemon/
 │  │  ├─ __main__.py      # 启动、daemon.json、空闲退出
-│  │  └─ app.py           # FastAPI 路由、鉴权、项目注册
+│  │  ├─ app.py           # FastAPI 路由、鉴权、项目注册
+│  │  └─ limits.py        # 请求体上限、令牌桶限速
 │  ├─ embed/
 │  │  ├─ base.py          # Embedder 协议、FakeEmbedder
 │  │  └─ st_backend.py    # sentence-transformers 实现、加载模式
@@ -352,6 +355,7 @@ SearchEngine/
 │  │  ├─ scanner.py       # 列文件、忽略规则、敏感文件
 │  │  ├─ chunkers/        # code.py / markdown.py / window.py / base.py
 │  │  ├─ media.py         # 图片、PDF、音视频的分段与解码
+│  │  ├─ media_worker.py  # 媒体解码子进程（限制内存/时间）与回传数据检查
 │  │  ├─ indexer.py       # 增量更新：分块、复用向量、嵌入、写入
 │  │  ├─ project.py       # 单个项目：写者线程、扫描、检索入口、状态
 │  │  ├─ store.py         # SQLite schema 与读写
@@ -460,7 +464,7 @@ SearchEngine/
 | 项 | 风险 | 处理 |
 |---|---|---|
 | 中文查询召回偏弱 | 关键词检索帮不上（中文描述对英文代码） | 已处理：让调用方先翻译成英文（分块器 v4 之后中文题 MRR 0.77 → 0.80），结果中附提示；是否遵守取决于 Claude |
-| 媒体解码 | PyAV / pdfium / Pillow 在 daemon 进程内解析不可信文件 | 默认关闭媒体索引；有大小、页数、时长、像素上限；未做进程隔离（见 `docs/AUDIT.md`） |
+| 媒体解码 | PyAV / pdfium / Pillow 解析不可信文件 | 默认关闭媒体索引；有大小、页数、时长、像素上限；在受限子进程里解码，回传数据逐项检查（见 3.4 和 `docs/AUDIT.md` 批次 5） |
 | 大型 C# 项目首次索引慢 | 1 万多个文件可能要 20–30 分钟 | 后台索引、返回部分结果并标注进度；阶段 1 尝试按 token 预算组 batch 提速 |
 | 6GB 显存 | 全模态 + 大批量可能 OOM | 自适应批大小；默认只加载文本编码器；空闲释放 |
 | Windows 兼容 | 路径分隔符与大小写（依赖兼容性已在阶段 0 验证） | 路径统一规范化为小写盘符 + `/` |

@@ -268,7 +268,11 @@ PostToolUse hook ────────────┘                        
   as untrusted.
 - **Private data:** the daemon listens on 127.0.0.1 only and requires a token. Its folder (the
   token, indexes and logs) is made readable by the current user only; on Windows this is done
-  with an explicit ACL.
+  with an explicit ACL. Request bodies are capped at 1 MB and requests are rate-limited.
+- **Media files:** images, PDFs, audio and video are decoded in a separate worker process with
+  a memory cap and a time limit (on Windows it may not start other processes). A file that
+  crashes or hangs it only loses its own chunks. The worker runs as your user, so it is a
+  damage limit, not a full sandbox.
 
 The full design (in Chinese) is in [docs/DESIGN.md](docs/DESIGN.md).
 

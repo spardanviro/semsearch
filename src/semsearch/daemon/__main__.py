@@ -14,6 +14,7 @@ import uvicorn
 from semsearch.client import DaemonClient
 from semsearch.config import Settings
 from semsearch.daemon.app import DaemonState, create_app
+from semsearch.daemon.limits import MAX_CONCURRENT_REQUESTS
 from semsearch.embed.base import make_embedder
 from semsearch.permissions import make_private
 
@@ -91,7 +92,7 @@ def main() -> None:
     sock.bind(("127.0.0.1", 0))
     port = sock.getsockname()[1]
     config = uvicorn.Config(create_app(state), log_config=None, access_log=False,
-                            timeout_graceful_shutdown=5)
+                            timeout_graceful_shutdown=5, limit_concurrency=MAX_CONCURRENT_REQUESTS)
     server = uvicorn.Server(config)
     write_daemon_file(settings, port, state.token)
     log.info("semsearch daemon pid=%s port=%s embedder=%s", os.getpid(), port, settings.embedder)

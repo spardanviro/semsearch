@@ -15,11 +15,10 @@ import logging
 import threading
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 import numpy as np
 
-from semsearch.config import Settings
 from semsearch.formatting import clock
 
 log = logging.getLogger(__name__)
@@ -36,6 +35,21 @@ PDF_RENDER_SIDE = 1280         # longest side of a rendered page, in pixels
 PDF_TEXT_CHARS = 3000          # page text embedded together with the page image
 PREVIEW_CHARS = 300
 VIDEO_FRAME_SIDE = 768
+
+
+class MediaLimits(Protocol):
+    """What segmentation needs from the settings (Settings has both)."""
+
+    @property
+    def max_pdf_pages(self) -> int: ...
+    @property
+    def max_media_seconds(self) -> float: ...
+
+
+@dataclass(frozen=True)
+class Limits:
+    max_pdf_pages: int
+    max_media_seconds: float
 
 
 @dataclass(frozen=True)
@@ -74,7 +88,7 @@ def windows(duration: float, length: float, hop: float) -> list[tuple[float, flo
 
 
 # --- segmentation (cheap) --------------------------------------------------------------------
-def segment(path: Path, kind: str, settings: Settings) -> list[MediaChunk]:
+def segment(path: Path, kind: str, settings: MediaLimits) -> list[MediaChunk]:
     if kind == "image":
         return _segment_image(path)
     if kind == "pdf":
@@ -101,7 +115,7 @@ def _segment_image(path: Path) -> list[MediaChunk]:
     return [MediaChunk("image", path.name, f"[image {width}x{height}]")]
 
 
-def _segment_pdf(path: Path, settings: Settings) -> list[MediaChunk]:
+def _segment_pdf(path: Path, settings: MediaLimits) -> list[MediaChunk]:
     import pypdfium2 as pdfium
     out: list[MediaChunk] = []
     pdf = pdfium.PdfDocument(str(path))
@@ -132,7 +146,7 @@ def _duration(container: Any) -> float:
     return 0.0
 
 
-def _segment_timed(path: Path, kind: str, settings: Settings) -> list[MediaChunk]:
+def _segment_timed(path: Path, kind: str, settings: MediaLimits) -> list[MediaChunk]:
     import av
     with av.open(str(path)) as container:
         if kind == "audio" and not container.streams.audio:
@@ -156,24 +170,54 @@ def _segment_timed(path: Path, kind: str, settings: Settings) -> list[MediaChunk
 
 
 # --- loading (decodes one chunk) -------------------------------------------------------------
+# Decoding untrusted files happens in a separate process (index.media_worker), which hands
+# back only plain arrays: `decode()` runs there, `assemble()` turns its arrays into model input.
 def load(path: Path, chunk: MediaChunk, with_audio: bool) -> dict[str, Any]:
-    """Model input for one chunk. `with_audio`: also give video segments their sound."""
+    """Model input for one chunk, decoded in this process. `with_audio`: also give video
+    segments their sound."""
+    return assemble(path, chunk, decode(path, chunk, with_audio))
+
+
+def decode(path: Path, chunk: MediaChunk, with_audio: bool) -> dict[str, np.ndarray]:
+    """One chunk as raw arrays: "image" (H, W, 3) uint8, "audio" (N,) float32 at AUDIO_RATE,
+    "frames" (T, H, W, 3) uint8 (+ "audio" for a video segment with at least 1 s of sound)."""
     if chunk.kind == "image":
-        return {"image": _load_image(path)}
+        return {"image": np.asarray(_load_image(path), dtype=np.uint8)}
     if chunk.kind == "pdf":
-        return _load_pdf_page(path, chunk)
+        return {"image": np.asarray(_render_pdf_page(path, chunk), dtype=np.uint8)}
     assert chunk.t_start is not None and chunk.t_end is not None
     if chunk.kind == "audio":
         samples = _audio(path, chunk.t_start, chunk.t_end)
         if samples is None or not len(samples):
             raise ValueError(f"{path.name}: no audio in {chunk.symbol}")
-        return {"audio": _audio_input(samples)}
+        return {"audio": samples}
     if chunk.kind == "video":
-        frames = _frames(path, chunk.t_start, chunk.t_end)
+        out = {"frames": _frames(path, chunk.t_start, chunk.t_end)}
         sound = _audio(path, chunk.t_start, chunk.t_end) if with_audio else None
         if sound is not None and len(sound) >= AUDIO_RATE:     # at least 1 s of real audio
-            return {"text": "<|video|> <|audio|>", "video": frames, "audio": _audio_input(sound)}
-        return {"video": frames}
+            out["audio"] = sound
+        return out
+    raise ValueError(f"unknown media kind {chunk.kind!r}")
+
+
+def assemble(path: Path, chunk: MediaChunk, raw: dict[str, np.ndarray]) -> dict[str, Any]:
+    """Model input (sentence-transformers multimodal dict) from decode()'s arrays."""
+    from PIL import Image
+    if chunk.kind == "image":
+        return {"image": Image.fromarray(raw["image"], "RGB")}
+    if chunk.kind == "pdf":
+        image = Image.fromarray(raw["image"], "RGB")
+        if not chunk.text:
+            return {"image": image}
+        return {"text": f"title: {path.name} {chunk.symbol} | text: {chunk.text} <|image|>",
+                "image": [image]}
+    if chunk.kind == "audio":
+        return {"audio": _audio_input(raw["audio"])}
+    if chunk.kind == "video":
+        if "audio" in raw:
+            return {"text": "<|video|> <|audio|>", "video": raw["frames"],
+                    "audio": _audio_input(raw["audio"])}
+        return {"video": raw["frames"]}
     raise ValueError(f"unknown media kind {chunk.kind!r}")
 
 
@@ -220,16 +264,15 @@ def release() -> None:
         cached[1].close()
 
 
-def _load_pdf_page(path: Path, chunk: MediaChunk) -> dict[str, Any]:
+def _render_pdf_page(path: Path, chunk: MediaChunk) -> Any:
     assert chunk.page is not None
     page = _open_pdf(path)[chunk.page - 1]
     width, height = page.get_size()
     scale = PDF_RENDER_SIDE / max(width, height, 1.0)
     image = page.render(scale=scale).to_pil().convert("RGB")
-    if not chunk.text:
-        return {"image": image}
-    return {"text": f"title: {path.name} {chunk.symbol} | text: {chunk.text} <|image|>",
-            "image": [image]}
+    if max(image.size) > PDF_RENDER_SIDE:      # rounding, or an absurd page aspect ratio
+        image.thumbnail((PDF_RENDER_SIDE, PDF_RENDER_SIDE))
+    return image
 
 
 def _origin(stream: Any, container: Any) -> float:

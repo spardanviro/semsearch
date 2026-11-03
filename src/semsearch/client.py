@@ -19,6 +19,7 @@ log = logging.getLogger(__name__)
 START_TIMEOUT_S = 120.0
 LOCK_STALE_S = START_TIMEOUT_S + 10   # a starter holds the lock at most START_TIMEOUT_S
 POLL_S = 0.25
+MAX_RETRY_WAIT_S = 5.0   # longest pause honoured from a 429/503 Retry-After
 STDOUT_LOG = "daemon.stdout.log"
 STDOUT_LOG_MAX = 5_000_000
 
@@ -35,6 +36,17 @@ def _http(method: str, url: str, **kwargs: Any) -> httpx.Response:
     # trust_env=False: never route localhost traffic through a system/registry proxy
     with httpx.Client(trust_env=False) as client:
         return client.request(method, url, **kwargs)
+
+
+def _retry_after(r: httpx.Response) -> float | None:
+    """Seconds to wait before retrying a 429/503, or None when the response is final."""
+    if r.status_code not in (429, 503):
+        return None
+    try:
+        seconds = float(r.headers.get("retry-after", "1"))
+    except ValueError:
+        seconds = 1.0
+    return min(max(seconds, 0.1), MAX_RETRY_WAIT_S)
 
 
 class DaemonClient:
@@ -156,13 +168,20 @@ class DaemonClient:
         info = self.ensure()
         url = f"http://127.0.0.1:{info['port']}{path}"
         headers = {"Authorization": f"Bearer {info['token']}"}
-        try:
-            if payload is None:
-                r = _http("GET", url, headers=headers, timeout=timeout)
-            else:
-                r = _http("POST", url, json=payload, headers=headers, timeout=timeout)
-        except httpx.HTTPError as exc:
-            raise DaemonUnavailable(f"request to daemon failed: {exc}") from exc
+        deadline = time.monotonic() + timeout
+        while True:
+            try:
+                if payload is None:
+                    r = _http("GET", url, headers=headers, timeout=timeout)
+                else:
+                    r = _http("POST", url, json=payload, headers=headers, timeout=timeout)
+            except httpx.HTTPError as exc:
+                raise DaemonUnavailable(f"request to daemon failed: {exc}") from exc
+            wait = _retry_after(r)
+            # rate-limited or at the connection cap: a short wait is better than failing
+            if wait is None or time.monotonic() + wait > deadline:
+                break
+            time.sleep(wait)
         if r.status_code >= 400:
             detail = r.json().get("detail") if r.headers.get("content-type", "").startswith(
                 "application/json") else r.text
