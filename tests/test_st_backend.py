@@ -90,6 +90,53 @@ def test_st_encode_queries_uses_named_prompt_and_empty_docs_ok() -> None:
     assert emb.count_tokens("a b c") == 3
 
 
+class SpecialTokenizer(StubTokenizer):
+    all_special_tokens = ["<bos>", "<|image|>", "<|image>"]
+
+
+class MediaTokenModel(StubModel):
+    """Like the EmbeddingGemma 2 processor: a literal <|image|> in text means "an image goes
+    here" and the call fails when no image is passed."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.texts: list[str] = []
+
+    def encode(self, texts: list[str], prompt: str, **kw: Any) -> np.ndarray:
+        if any("<|image|>" in t for t in texts):
+            raise ValueError("Found 1 <|image|> tokens in the text but no images were passed.")
+        self.texts.extend(texts)
+        return super().encode(texts, prompt, **kw)
+
+
+def test_st_documents_with_literal_special_tokens_still_get_vectors() -> None:
+    # Arrange: source code that mentions the model's own control tokens
+    model = MediaTokenModel()
+    emb = make(model)
+    emb._tokenizer = SpecialTokenizer()
+    docs = ['PDF_TEXT = "title: x | text: <|image|>"', "tokens = ['<bos>', '<|image>']"]
+
+    # Act
+    out = emb.encode_documents(docs)
+
+    # Assert: every chunk embedded, and the model never saw a raw control token
+    assert out.shape == (2, 768)
+    assert len(model.texts) == 2
+    assert not any(tok in t for t in model.texts for tok in SpecialTokenizer.all_special_tokens)
+    assert all("image" in t or "bos" in t for t in model.texts)   # the words themselves stay
+
+
+def test_st_queries_with_literal_special_tokens_are_neutralized() -> None:
+    model = MediaTokenModel()
+    emb = make(model)
+    emb._tokenizer = SpecialTokenizer()
+
+    out = emb.encode_queries(["where is <|image|> inserted into the PDF text"])
+
+    assert out.shape == (1, 768)
+    assert "<|image|>" not in model.texts[0]
+
+
 def test_st_literal_prompt_text_is_used_when_not_a_prompt_name() -> None:
     model = StubModel()
     emb = make(model, query_prompt="query: ", document_prompt="")

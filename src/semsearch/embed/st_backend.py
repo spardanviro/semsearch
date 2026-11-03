@@ -6,6 +6,7 @@ any sentence-transformers model can be used without code changes.
 from __future__ import annotations
 
 import logging
+import re
 import threading
 import time
 from typing import Any
@@ -20,6 +21,9 @@ PROMPT_SPECIAL_TOKENS = 4         # BOS/EOS etc. added around prompt + text
 PROMPT_MARGIN_TOKENS = 32         # sequence-length headroom for prompt + special tokens
 # EmbeddingGemma prompt names (PHASE0 + PHASE1_5: SearchQuery beats CodeRetrieval / QA)
 GEMMA_PROMPTS = {"query": "SearchQuery", "document": "Document"}
+# breaks a control token written literally in text (`<|image|>`, `<bos>`) so the tokenizer
+# reads it as plain characters: EmbeddingGemma 2 fails on a text with `<|image|>` and no image
+ZERO_WIDTH_SPACE = "​"
 
 
 def is_embeddinggemma(model: str) -> bool:
@@ -56,6 +60,7 @@ class SentenceTransformerEmbedder:
         self._model: Any = None
         self._tokenizer: Any = None
         self._prompts: tuple[str, str] | None = None   # (query, document) prefix text
+        self._special: re.Pattern[str] | None = None   # the tokenizer's control tokens
         self._dim: int | None = settings.embed_dim or (EMBED_DIM if settings.model == MODEL_ID
                                                        else None)
 
@@ -161,10 +166,25 @@ class SentenceTransformerEmbedder:
         with self._tok_lock:
             return len(self._tok()(text, add_special_tokens=False)["input_ids"])
 
+    def _plain(self, texts: list[str]) -> list[str]:
+        """Texts with the model's control tokens defused. Only for text: a PDF page's media
+        input carries a real `<|image|>` placeholder and goes through encode_media()."""
+        if self._special is None:
+            # the loaded model's own tokenizer (unwrapped from a multimodal processor), so a
+            # query never loads a second one; called after _load()
+            tok = getattr(self._model, "tokenizer", None) or self._tokenizer
+            tok = getattr(tok, "tokenizer", tok)
+            tokens = getattr(tok, "all_special_tokens", None) or []
+            # longest first, so `<|image|>` wins over a shorter token that is its prefix
+            alts = sorted({t for t in tokens if len(t) > 1}, key=len, reverse=True)
+            self._special = re.compile("|".join(map(re.escape, alts)) or r"(?!)")
+        return [self._special.sub(lambda m: m[0][0] + ZERO_WIDTH_SPACE + m[0][1:], t)
+                for t in texts]
+
     def encode_queries(self, texts: list[str]) -> np.ndarray:
         with self._lock:
             model = self._load()
-            out = model.encode(texts, prompt=self._prompt(0), convert_to_numpy=True,
+            out = model.encode(self._plain(texts), prompt=self._prompt(0), convert_to_numpy=True,
                                normalize_embeddings=False)
         return self._finish(out)
 
@@ -173,6 +193,7 @@ class SentenceTransformerEmbedder:
             return np.zeros((0, self.dim), dtype=np.float32)
         with self._lock:
             self._load()
+        texts = self._plain(texts)
         overhead = self.count_tokens(self._prompt(1)) + PROMPT_SPECIAL_TOKENS
         lengths = [min(self.count_tokens(t), self.settings.max_tokens) + overhead for t in texts]
         order = sorted(range(len(texts)), key=lambda i: lengths[i])
