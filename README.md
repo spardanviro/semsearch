@@ -55,14 +55,40 @@ Speed (RTX 3060 6 GB):
   just much more slowly.
 - **PyTorch build:** on Windows and Linux, `pyproject.toml` installs the CUDA 13.0 build of
   PyTorch (`pytorch-cu130`), which needs NVIDIA driver 580 or newer. With an older driver the
-  model silently falls back to the CPU. For another CUDA version, or for CPU only, change
+  model silently falls back to the CPU (`semsearch doctor` detects this). For another CUDA version, or for CPU only, change
   `[tool.uv.sources]` / `[[tool.uv.index]]`. macOS uses the regular PyPI build.
 - **Platform:** developed and tested on Windows 11. The code is cross-platform, but Linux and
   macOS have not been tested yet.
-- **Model download:** the model, `google/embeddinggemma-2`, is downloaded from Hugging Face on
-  first use.
+- **Model download:** the model, `google/embeddinggemma-2` (1.5 GB), is downloaded from
+  Hugging Face on first use, or ahead of time with `semsearch download-model`, which asks first.
 
 ## Install
+
+### One-line install (recommended)
+
+Windows (PowerShell):
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://raw.githubusercontent.com/spardanviro/SearchEngine/main/scripts/install.ps1 | iex"
+```
+
+macOS / Linux:
+
+```bash
+curl -LsSf https://raw.githubusercontent.com/spardanviro/SearchEngine/main/scripts/install.sh | sh
+```
+
+The script installs [uv](https://docs.astral.sh/uv/) if it is missing, installs semsearch with
+every dependency pinned to `uv.lock`, runs `semsearch doctor`, offers to download the model,
+and finally runs `semsearch install-claude`. Each download and each change to your setup asks
+first. It needs about 5 GB of disk (PyTorch about 3.5 GB, the model 1.5 GB). The Windows script
+has been tested on Windows 11; `install.sh` so far only under Git Bash on Windows.
+
+Options, as environment variables: `SEMSEARCH_INSTALL_REF` (branch, tag or commit; default
+`main`), `SEMSEARCH_INSTALL_SOURCE` (a local folder to install from) and
+`SEMSEARCH_INSTALL_YES=1` (answer yes to every question).
+
+### Manual install
 
 ```bash
 git clone https://github.com/spardanviro/SearchEngine.git
@@ -127,7 +153,13 @@ semsearch status
 semsearch reindex            # rescan now
 semsearch reindex --full     # rebuild the index from scratch
 semsearch daemon stop        # free GPU memory; the next search restarts it
+semsearch doctor             # check Python, GPU and driver, model, disk, Claude Code setup
+semsearch download-model     # download the model now (shows the size and asks first)
 ```
+
+`semsearch doctor` prints a fix for every problem it finds (for example "NVIDIA driver too old,
+running on the CPU" or "Hugging Face cannot be reached"). It contacts Hugging Face only when the
+model is not downloaded yet; `--offline` skips that.
 
 `--root <dir>` searches a project other than the current one.
 

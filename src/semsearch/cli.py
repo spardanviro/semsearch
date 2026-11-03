@@ -1,4 +1,5 @@
-"""`semsearch` command line: search / status / reindex / daemon control / Claude Code install."""
+"""`semsearch` command line: search / status / reindex / daemon control / Claude Code install /
+environment check / model download."""
 from __future__ import annotations
 
 import argparse
@@ -6,8 +7,9 @@ import json
 import sys
 from pathlib import Path
 
+from semsearch import doctor
 from semsearch.client import DaemonClient, DaemonUnavailable
-from semsearch.config import MEDIA_KINDS
+from semsearch.config import MEDIA_KINDS, Settings
 from semsearch.formatting import format_search, format_status
 from semsearch.install import Targets, describe, install, script_path, shell_quote, uninstall
 from semsearch.paths import find_project_root
@@ -59,11 +61,19 @@ def cmd_daemon(args: argparse.Namespace) -> int:
     return 0
 
 
+def _confirm(question: str) -> bool:
+    try:
+        return input(question).strip().lower() == "y"
+    except EOFError:      # no terminal (e.g. run from a piped install script): never assume yes
+        print()
+        return False
+
+
 def cmd_install(args: argparse.Namespace) -> int:
     targets = Targets.default()
     if args.uninstall:
         print("Will remove the semsearch MCP server, hook, subagent and CLAUDE.md block.")
-        if not args.yes and input("Proceed? [y/N] ").strip().lower() != "y":
+        if not args.yes and not _confirm("Proceed? [y/N] "):
             return 1
         uninstall(targets)
         print("removed (backups: *.semsearch.bak)")
@@ -75,11 +85,26 @@ def cmd_install(args: argparse.Namespace) -> int:
         print("  - " + line)
     if args.dry_run:
         return 0
-    if not args.yes and input("Proceed? [y/N] ").strip().lower() != "y":
+    if not args.yes and not _confirm("Proceed? [y/N] "):
         return 1
     install(targets, mcp_cmd, hook_cmd)
     print("installed (backups: *.semsearch.bak). Restart Claude Code sessions to load it.")
     return 0
+
+
+def cmd_doctor(args: argparse.Namespace) -> int:
+    checks = doctor.run_checks(online=not args.offline)
+    print(doctor.to_json(checks) if args.json else doctor.format_report(checks))
+    return doctor.exit_code(checks)
+
+
+def cmd_download_model(args: argparse.Namespace) -> int:
+    try:
+        settings = Settings()
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    return doctor.download_model(settings, yes=args.yes, ask=input)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -110,6 +135,15 @@ def build_parser() -> argparse.ArgumentParser:
     i.add_argument("--dry-run", action="store_true", help="only print planned changes")
     i.add_argument("--uninstall", action="store_true")
     i.set_defaults(func=cmd_install)
+
+    dr = sub.add_parser("doctor", help="check the environment and explain how to fix problems")
+    dr.add_argument("--offline", action="store_true", help="do not contact Hugging Face")
+    dr.add_argument("--json", action="store_true", help="raw JSON output")
+    dr.set_defaults(func=cmd_doctor)
+
+    dm = sub.add_parser("download-model", help="download the embedding model (asks first)")
+    dm.add_argument("--yes", action="store_true", help="do not ask for confirmation")
+    dm.set_defaults(func=cmd_download_model)
 
     for sp in (s, st, r):
         sp.add_argument("--root", help="project root (default: CLAUDE_PROJECT_DIR / git root / cwd)")

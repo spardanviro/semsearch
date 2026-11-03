@@ -316,6 +316,8 @@ stat 比较 files 表：
 | 语义检索找到符号后，确认全部引用 | 转到 LSP（查找引用）或 Grep |
 
 ### 5.5 安装方式
+面向新手的一键安装脚本 `scripts/install.ps1`（Windows）和 `scripts/install.sh`（macOS/Linux）做的是下面这几步，并在前后加上检查：没有 uv 时先装 uv；从 GitHub 下载源码压缩包（或使用 `SEMSEARCH_INSTALL_SOURCE` 指定的本地目录）；用 `uv export --frozen` 导出 `uv.lock` 的版本作为约束再执行 `uv tool install`（与 post-commit hook 相同）；运行 `semsearch doctor --offline`；然后是 `semsearch download-model` 和 `semsearch install-claude`。每次下载、每处配置改动都先询问；没有终端时一律按"否"处理。PowerShell 脚本的全部逻辑放在一个函数里，因为 `irm | iex` 在用户自己的会话里执行，脚本里出现 `exit` 会关掉用户的窗口。只有脚本本身是克隆里的一个真实文件、且上一级目录的 `pyproject.toml` 写着 `name = "semsearch"` 时才用本地源码：`curl | sh` 时 `$0` 是 `sh`，当前目录是用户的，不能把那里的 `uv.lock` 当成 semsearch。uv 官方安装器带 `UV_NO_MODIFY_PATH=1` 运行，PATH 只在询问后由 `uv tool update-shell` 修改。
+
 ```bash
 # 在仓库根目录执行；非 editable 安装，包被复制到 uv 工具目录的独立环境里，
 # 之后移动或删除仓库不影响使用。pyproject 的 [tool.uv.sources] 保证 torch 装 cu130 版。
@@ -329,6 +331,8 @@ semsearch install-claude             # 注册 MCP、写入 hook、subagent、CLA
 
 CLI 也可单独使用：`semsearch search "限流重试"`、`semsearch status`、`semsearch reindex`。
 
+`semsearch doctor` 逐项检查 Python、uv、显卡和 PyTorch（重点是驱动太旧导致静默退回 CPU）、模型是否已下载、磁盘空间、daemon、Claude Code 注册情况，每个问题附修复方法；有失败项时退出码为 1。每项检查都拆成"收集事实"和纯函数 `judge_*` 两部分，测试不需要 GPU、网络或模型。只在模型未下载时联网查询（`--offline` 跳过），网络查询失败会重试，最多 3 次。Windows 上只从 System32 调用 `nvidia-smi`，不按 PATH 查找，因为 PATH 查找会先找当前目录。`semsearch download-model` 先显示下载大小并检查磁盘空间，确认后才下载。
+
 ---
 
 ## 6. 项目结构
@@ -337,6 +341,7 @@ CLI 也可单独使用：`semsearch search "限流重试"`、`semsearch status`�
 SearchEngine/
 ├─ pyproject.toml / uv.lock
 ├─ .githooks/post-commit     # 提交后从 HEAD 快照重装 uv tool，并停掉旧 daemon
+├─ scripts/                  # install.ps1 / install.sh：一键安装
 ├─ docs/                     # DESIGN、PHASE*、EVAL_REAL_PROJECTS、AUDIT
 ├─ src/semsearch/
 │  ├─ config.py           # Settings（环境变量）、扩展名、敏感文件规则、版本号
@@ -365,6 +370,7 @@ SearchEngine/
 │  ├─ integrations/       # semantic-search.md（subagent）、claude-md-snippet.md
 │  ├─ client.py           # 连接/拉起 daemon 的共享客户端
 │  ├─ install.py          # install-claude
+│  ├─ doctor.py           # doctor（环境检查）、download-model
 │  ├─ mcp_server.py
 │  ├─ hook.py
 │  └─ cli.py

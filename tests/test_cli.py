@@ -115,6 +115,19 @@ def test_cli_install_declined_does_nothing(monkeypatch: pytest.MonkeyPatch) -> N
     assert called == []
 
 
+def test_cli_install_without_a_terminal_counts_as_no(monkeypatch: pytest.MonkeyPatch) -> None:
+    called: list[str] = []
+    monkeypatch.setattr(cli, "install", lambda *a: called.append("install"))
+
+    def no_tty(_p: str) -> str:
+        raise EOFError
+
+    monkeypatch.setattr("builtins.input", no_tty)
+
+    assert cli.main(["install-claude"]) == 1
+    assert called == []
+
+
 def test_cli_uninstall_yes_calls_uninstall(monkeypatch: pytest.MonkeyPatch) -> None:
     called: list[str] = []
     monkeypatch.setattr(cli, "uninstall", lambda *a: called.append("uninstall"))
