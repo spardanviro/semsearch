@@ -33,6 +33,13 @@ ZERO_WIDTH_SPACE = "​"
 _IMPORT_LOCK = threading.Lock()
 
 
+def skip_cuda_capture_check(torch: Any) -> None:
+    """For CPU-only runs. transformers asks `torch.cuda.is_current_stream_capturing()` on every
+    forward pass; the CUDA build of torch on Windows crashes the process there (no Python
+    error) when no NVIDIA driver is installed. Nothing is captured on the CPU: answer False."""
+    torch.cuda.is_current_stream_capturing = lambda: False
+
+
 def is_embeddinggemma(model: str) -> bool:
     return "embeddinggemma" in model.lower()
 
@@ -87,6 +94,8 @@ class SentenceTransformerEmbedder:
                 import torch
                 from sentence_transformers import SentenceTransformer
             device = "cuda" if torch.cuda.is_available() else "cpu"
+            if device == "cpu":
+                skip_cuda_capture_check(torch)
             dtype = torch.bfloat16 if device == "cuda" else torch.float32
             extra: dict[str, Any] = {}
             if GEMMA_CONFIG_KWARGS.get(self.load_mode):   # skip encoders no media kind needs

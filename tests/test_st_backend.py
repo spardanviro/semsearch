@@ -358,3 +358,21 @@ def test_st_real_model_ranks_relevant_code_first() -> None:
     scores = q @ docs.T
     assert scores[0, 0] > scores[0, 1]
     assert docs.dtype == np.float32 and docs.shape == (2, 768)
+
+
+def test_load_on_cpu_never_asks_cuda_about_stream_capture(
+        fake_st: type[FakeSentenceTransformer], monkeypatch: pytest.MonkeyPatch) -> None:
+    # Regression: on Windows without an NVIDIA driver the CUDA build of torch crashed the
+    # daemon inside this check, which transformers runs on every forward pass
+    import torch
+
+    def crashes() -> bool:
+        raise AssertionError("would crash the process without a driver")
+
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    monkeypatch.setattr(torch.cuda, "is_current_stream_capturing", crashes)
+
+    _emb, model = loaded()
+
+    assert model.kwargs["device"] == "cpu"
+    assert torch.cuda.is_current_stream_capturing() is False
